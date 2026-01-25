@@ -1,73 +1,79 @@
-# React + TypeScript + Vite
+# Project TA
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Web Application ini dibangun menggunakan **React**, **Vite**, dan **Tailwind CSS**. 
 
-Currently, two official plugins are available:
+Berikut adalah panduan langkah demi langkah untuk menjalankan proyek ini di komputer Anda, dimulai dari persiapan lingkungan hingga menjalankan aplikasi.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 📋 Prasyarat
 
-## React Compiler
+Sebelum memulai, pastikan komputer Anda telah terinstal perangkat lunak berikut:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1.  **Node.js & npm** (Runtime JavaScript dan Package Manager)
+    *   Unduh dan instal versi terbaru (LTS direkomendasikan) dari [nodejs.org](https://nodejs.org/).
+    *   Untuk memverifikasi instalasi, buka terminal (Command Prompt/PowerShell) dan jalankan:
+        ```bash
+        node -v
+        npm -v
+        ```
+2.  **Git** (Version Control System)
+    *   Unduh dan instal dari [git-scm.com](https://git-scm.com/).
+    *   Untuk memverifikasi, jalankan:
+        ```bash
+        git --version
+        ```
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🚀 Cara Menjalankan Project
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Ikuti langkah-langkah berikut untuk mengunduh dan menjalankan aplikasi di komputer lokal Anda:
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### 1. Clone Repository
+Salin kode sumber proyek ke komputer Anda. Buka terminal atau Command Prompt di folder tujuan yang Anda inginkan, lalu jalankan:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+git clone <URL_REPOSITORY_ANDA>
+cd project-ta
+```
+*(Ganti `<URL_REPOSITORY_ANDA>` dengan URL repository GitHub yang sebenarnya)*
+
+### 2. Install Dependencies
+Masuk ke direktori proyek (jika belum) dan instal semua pustaka yang dibutuhkan menggunakan npm:
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 3. Jalankan Aplikasi (Development Mode)
+Untuk memulai server pengembangan lokal:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+Setelah perintah dijalankan, terminal akan menampilkan alamat lokal (biasanya `http://localhost:5173/`). Buka alamat tersebut di browser web Anda untuk melihat aplikasi.
+
+---
+
+## 🛠️ Script yang Tersedia
+
+Dalam direktori proyek, Anda dapat menjalankan perintah berikut:
+
+- **`npm run dev`**: Menjalankan aplikasi dalam mode pengembangan. Halaman akan dimuat ulang secara otomatis jika Anda mengedit file.
+- **`npm run build`**: Membuild aplikasi untuk produksi ke folder `dist`.
+- **`npm run preview`**: Menjalankan preview dari hasil build produksi secara lokal.
+- **`npm run lint`**: Memeriksa kode untuk menemukan potensi error menggunakan ESLint.
+
+## 📁 Struktur Project
+
+Web app ini menggunakan struktur folder Vite + React standard:
+
+- `src/`: Berisi kode sumber utama (Komponen, Halaman, Logika).
+- `public/`: Aset statis yang tidak diproses oleh Vite.
+- `index.html`: Titik masuk aplikasi.
+- `vite.config.ts`: Konfigurasi Vite.
+- `tailwind.config.js` (atau terintegrasi di CSS): Konfigurasi Tailwind CSS.
+
+---
+
+Dibuat dengan ❤️ menggunakan [Vite](https://vitejs.dev/) & [React](https://react.dev/).
