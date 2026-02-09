@@ -62,6 +62,14 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 - Tambah middleware `AuthenticateFromQuery` — fix preview lampiran (token via query param)
 - Update seeder: kategori "Air" -> "Air/Gas"
 
+### v1.2.1 — Inline Attachment Viewer (2025-02-09)
+- Komponen baru `LampiranViewer` — preview lampiran langsung di modal tanpa buka tab baru
+- Dukungan format: PDF (iframe), gambar JPG/PNG/GIF/WebP (`<img>`), DOCX (`docx-preview`), XLSX/XLS (SheetJS → tabel HTML)
+- File diambil via axios dengan auth token, ditampilkan dari blob
+- Fallback "Buka di tab baru" untuk format yang tidak didukung
+- Dependensi baru: `docx-preview`, `xlsx` (SheetJS)
+- Styling docx-preview dan tabel XLSX di `index.css`
+
 ---
 
 ## Prasyarat

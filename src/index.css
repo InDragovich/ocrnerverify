@@ -8,3 +8,15 @@
 body {
   @apply bg-gray-50 text-gray-900;
 }
+
+/* Docx-preview viewer (lampiran) */
+.docx-body .docx-wrapper {
+  padding: 1rem;
+  background: #fff;
+}
+.docx-body table {
+  border-collapse: collapse;
+}
+.docx-body p {
+  margin: 0.25em 0;
+}
