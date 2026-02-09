@@ -4,14 +4,28 @@ import { authService } from '../services/authService';
 import type { User } from '../services/authService';
 import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem, Filters } from '../services/verifikasiService';
-import { CATEGORIES, MONTHS, STATUS_VERIFIKASI, HASIL_KESESUAIAN } from '../data/constants';
+import { CATEGORIES } from '../data/constants';
 import { Header } from '../components/Header';
 import { DetailModal } from '../components/DetailModal';
 import {
-    Filter, Eye, Loader2, ChevronLeft, ChevronRight,
-    PlayCircle, CheckSquare, Square, MinusSquare,
+    Filter, Eye, Loader2,
+    PlayCircle, CheckSquare, Square, MinusSquare, Search,
 } from 'lucide-react';
 import clsx from 'clsx';
+
+function getNominalColor(doc: VerifikasiItem): string {
+    if (doc.status_verifikasi === 'menunggu' || doc.status_verifikasi === 'diproses') {
+        return 'text-gray-400';
+    }
+    const nerNominal = doc.hasil_entitas?.nominal ? Number(doc.hasil_entitas.nominal) : null;
+    if (nerNominal === null) return 'text-gray-400';
+    return doc.nominal_pelaporan === nerNominal ? 'text-green-600' : 'text-red-600';
+}
+
+function getNerNominal(doc: VerifikasiItem): number | null {
+    if (!doc.hasil_entitas?.nominal) return null;
+    return Number(doc.hasil_entitas.nominal);
+}
 
 export const VerifierDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -21,6 +35,7 @@ export const VerifierDashboard: React.FC = () => {
     const [filters, setFilters] = useState<Filters>({
         kategori: '', tahun: '', triwulan: '', status_verifikasi: '', hasil_kesesuaian: '', page: 1, per_page: 15,
     });
+    const [searchQuery, setSearchQuery] = useState('');
 
     // data
     const [documents, setDocuments] = useState<VerifikasiItem[]>([]);
@@ -80,6 +95,11 @@ export const VerifierDashboard: React.FC = () => {
 
     const handlePageChange = (page: number) => {
         setFilters(prev => ({ ...prev, page }));
+        setSelected(new Set());
+    };
+
+    const handlePerPageChange = (perPage: number) => {
+        setFilters(prev => ({ ...prev, per_page: perPage, page: 1 }));
         setSelected(new Set());
     };
 
@@ -158,6 +178,18 @@ export const VerifierDashboard: React.FC = () => {
         loadDocuments(); // refresh in case keputusan was set
     };
 
+    // Filter documents by search query (client-side)
+    const filteredDocuments = searchQuery
+        ? documents.filter(doc =>
+            doc.kategori.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            doc.operator?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            doc.regional.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            doc.kcu.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            doc.kpc.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            doc.periode.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        : documents;
+
     if (!user) return null;
 
     return (
@@ -202,7 +234,7 @@ export const VerifierDashboard: React.FC = () => {
                         <div className="flex flex-wrap gap-3 flex-1">
                             <select value={filters.kategori} onChange={e => handleFilterChange('kategori', e.target.value)}
                                 className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
-                                <option value="">Semua Kategori</option>
+                                <option value="">Semua Rekening</option>
                                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                             <select value={filters.tahun} onChange={e => handleFilterChange('tahun', e.target.value)}
@@ -214,16 +246,6 @@ export const VerifierDashboard: React.FC = () => {
                                 className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
                                 <option value="">Semua TW</option>
                                 {[1, 2, 3, 4].map(t => <option key={t} value={t}>TW {t}</option>)}
-                            </select>
-                            <select value={filters.status_verifikasi} onChange={e => handleFilterChange('status_verifikasi', e.target.value)}
-                                className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
-                                <option value="">Semua Status</option>
-                                {Object.entries(STATUS_VERIFIKASI).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                            </select>
-                            <select value={filters.hasil_kesesuaian} onChange={e => handleFilterChange('hasil_kesesuaian', e.target.value)}
-                                className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
-                                <option value="">Semua Kesesuaian</option>
-                                {Object.entries(HASIL_KESESUAIAN).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                             </select>
                         </div>
                         <button
@@ -239,6 +261,31 @@ export const VerifierDashboard: React.FC = () => {
 
                 {/* Table */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    {/* Table toolbar */}
+                    <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-600">Show</span>
+                            <select
+                                value={filters.per_page || 15}
+                                onChange={e => handlePerPageChange(Number(e.target.value))}
+                                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
+                                {[5, 10, 15, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                            <span className="text-sm text-gray-600">entries</span>
+                        </div>
+                        <div className="relative">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                className="text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none w-64"
+                            />
+                        </div>
+                    </div>
+
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -249,36 +296,36 @@ export const VerifierDashboard: React.FC = () => {
                                         </button>
                                     </th>
                                     <th className="p-4">No</th>
-                                    <th className="p-4">Kategori</th>
+                                    <th className="p-4">Nama Rekening</th>
                                     <th className="p-4">Operator</th>
                                     <th className="p-4">Regional</th>
                                     <th className="p-4">Tahun</th>
                                     <th className="p-4">TW</th>
                                     <th className="p-4">Periode</th>
-                                    <th className="p-4">Nominal</th>
-                                    <th className="p-4">Lampiran</th>
-                                    <th className="p-4 text-center">Status</th>
-                                    <th className="p-4 text-center">Kesesuaian</th>
+                                    <th className="p-4">Pelaporan</th>
+                                    <th className="p-4">Verifikasi</th>
                                     <th className="p-4 text-center">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={13} className="p-8 text-center">
+                                        <td colSpan={11} className="p-8 text-center">
                                             <Loader2 className="animate-spin mx-auto text-gray-400" />
                                         </td>
                                     </tr>
-                                ) : documents.length === 0 ? (
+                                ) : filteredDocuments.length === 0 ? (
                                     <tr>
-                                        <td colSpan={13} className="p-8 text-center text-gray-500">
+                                        <td colSpan={11} className="p-8 text-center text-gray-500">
                                             Belum ada data.
                                         </td>
                                     </tr>
-                                ) : documents.map((doc, idx) => {
+                                ) : filteredDocuments.map((doc, idx) => {
                                     const canSelect = doc.status_verifikasi === 'menunggu' || doc.status_verifikasi === 'gagal';
                                     const isProcessingBatch = batchIds.includes(doc.id);
                                     const rowNum = ((filters.page || 1) - 1) * (filters.per_page || 15) + idx + 1;
+                                    const nominalColor = getNominalColor(doc);
+                                    const nerNominal = getNerNominal(doc);
 
                                     return (
                                         <tr key={doc.id} className={clsx('hover:bg-gray-50/50 transition-colors', isProcessingBatch && 'bg-indigo-50/30')}>
@@ -303,19 +350,25 @@ export const VerifierDashboard: React.FC = () => {
                                             <td className="p-4 text-sm">{doc.tahun}</td>
                                             <td className="p-4 text-sm">{doc.triwulan}</td>
                                             <td className="p-4 text-sm">{doc.periode}</td>
-                                            <td className="p-4 text-sm font-medium">Rp {doc.nominal_pelaporan.toLocaleString('id-ID')}</td>
-                                            <td className="p-4 text-sm text-indigo-600 truncate max-w-[150px]">{doc.lampiran_nama_asli}</td>
-                                            <td className="p-4 text-center">
-                                                <span className={clsx('px-2 py-1 rounded-full text-xs font-medium border', STATUS_VERIFIKASI[doc.status_verifikasi]?.color)}>
-                                                    {isProcessingBatch ? (
-                                                        <span className="flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Proses</span>
-                                                    ) : STATUS_VERIFIKASI[doc.status_verifikasi]?.label}
-                                                </span>
+                                            <td className={clsx('p-4 text-sm font-semibold', nominalColor)}>
+                                                {isProcessingBatch ? (
+                                                    <span className="flex items-center gap-1 text-indigo-500">
+                                                        <Loader2 size={14} className="animate-spin" /> Proses...
+                                                    </span>
+                                                ) : (
+                                                    `Rp ${doc.nominal_pelaporan.toLocaleString('id-ID')}`
+                                                )}
                                             </td>
-                                            <td className="p-4 text-center">
-                                                <span className={clsx('px-2 py-1 rounded-full text-xs font-medium border', HASIL_KESESUAIAN[doc.hasil_kesesuaian]?.color)}>
-                                                    {HASIL_KESESUAIAN[doc.hasil_kesesuaian]?.label}
-                                                </span>
+                                            <td className={clsx('p-4 text-sm font-semibold', nominalColor)}>
+                                                {isProcessingBatch ? (
+                                                    <span className="flex items-center gap-1 text-indigo-500">
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                    </span>
+                                                ) : nerNominal !== null ? (
+                                                    `Rp ${nerNominal.toLocaleString('id-ID')}`
+                                                ) : (
+                                                    <span className="text-gray-300">-</span>
+                                                )}
                                             </td>
                                             <td className="p-4 text-center">
                                                 <button
@@ -334,25 +387,25 @@ export const VerifierDashboard: React.FC = () => {
                     </div>
 
                     {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-                            <p className="text-sm text-gray-500">
-                                Menampilkan {documents.length} dari {totalItems} data
-                            </p>
-                            <div className="flex items-center gap-2">
+                    <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                        <p className="text-sm text-gray-500">
+                            Showing {filteredDocuments.length > 0 ? ((filters.page || 1) - 1) * (filters.per_page || 15) + 1 : 0} to {Math.min((filters.page || 1) * (filters.per_page || 15), totalItems)} of {totalItems} entries
+                        </p>
+                        {totalPages > 1 && (
+                            <div className="flex items-center gap-1">
                                 <button
                                     onClick={() => handlePageChange((filters.page || 1) - 1)}
                                     disabled={(filters.page || 1) <= 1}
-                                    className="p-2 hover:bg-gray-100 disabled:opacity-30 rounded-lg transition-colors"
+                                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-30 transition-colors"
                                 >
-                                    <ChevronLeft size={18} />
+                                    Previous
                                 </button>
                                 {Array.from({ length: totalPages }, (_, i) => i + 1)
                                     .filter(p => Math.abs(p - (filters.page || 1)) <= 2 || p === 1 || p === totalPages)
                                     .map((p, idx, arr) => (
                                         <React.Fragment key={p}>
                                             {idx > 0 && arr[idx - 1] !== p - 1 && (
-                                                <span className="text-gray-300">...</span>
+                                                <span className="px-2 text-gray-300">...</span>
                                             )}
                                             <button
                                                 onClick={() => handlePageChange(p)}
@@ -360,7 +413,7 @@ export const VerifierDashboard: React.FC = () => {
                                                     'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
                                                     p === (filters.page || 1)
                                                         ? 'bg-indigo-600 text-white'
-                                                        : 'hover:bg-gray-100 text-gray-600'
+                                                        : 'border border-gray-200 hover:bg-gray-50 text-gray-600'
                                                 )}
                                             >
                                                 {p}
@@ -370,13 +423,13 @@ export const VerifierDashboard: React.FC = () => {
                                 <button
                                     onClick={() => handlePageChange((filters.page || 1) + 1)}
                                     disabled={(filters.page || 1) >= totalPages}
-                                    className="p-2 hover:bg-gray-100 disabled:opacity-30 rounded-lg transition-colors"
+                                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-30 transition-colors"
                                 >
-                                    <ChevronRight size={18} />
+                                    Next
                                 </button>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </main>
 

@@ -4,10 +4,24 @@ import { authService } from '../services/authService';
 import type { User } from '../services/authService';
 import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
-import { CATEGORIES, MONTHS, STATUS_VERIFIKASI, HASIL_KESESUAIAN } from '../data/constants';
+import { CATEGORIES, MONTHS } from '../data/constants';
 import { Header } from '../components/Header';
-import { FileText, Save, CheckCircle, Upload, Loader2, Trash2 } from 'lucide-react';
+import { FileText, Save, CheckCircle, Upload, Loader2, Trash2, Search } from 'lucide-react';
 import clsx from 'clsx';
+
+function getNominalColor(doc: VerifikasiItem): string {
+    if (doc.status_verifikasi === 'menunggu' || doc.status_verifikasi === 'diproses') {
+        return 'text-gray-400';
+    }
+    const nerNominal = doc.hasil_entitas?.nominal ? Number(doc.hasil_entitas.nominal) : null;
+    if (nerNominal === null) return 'text-gray-400';
+    return doc.nominal_pelaporan === nerNominal ? 'text-green-600' : 'text-red-600';
+}
+
+function getNerNominal(doc: VerifikasiItem): number | null {
+    if (!doc.hasil_entitas?.nominal) return null;
+    return Number(doc.hasil_entitas.nominal);
+}
 
 export const InputDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -25,6 +39,8 @@ export const InputDashboard: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [documents, setDocuments] = useState<VerifikasiItem[]>([]);
     const [loadingDocs, setLoadingDocs] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [perPage, setPerPage] = useState(10);
 
     useEffect(() => {
         const currentUser = authService.getCurrentUser();
@@ -120,6 +136,17 @@ export const InputDashboard: React.FC = () => {
         }
     };
 
+    // Client-side search filter
+    const filteredDocuments = searchQuery
+        ? documents.filter(doc =>
+            doc.kategori.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            doc.periode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            String(doc.nominal_pelaporan).includes(searchQuery)
+        )
+        : documents;
+
+    const displayedDocuments = filteredDocuments.slice(0, perPage);
+
     if (!user) return null;
 
     return (
@@ -170,10 +197,10 @@ export const InputDashboard: React.FC = () => {
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="md:col-span-2">
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Kategori</label>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Nama Rekening</label>
                                         <select name="kategori" required value={formData.kategori} onChange={handleChange}
                                             className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
-                                            <option value="">-- Pilih Kategori --</option>
+                                            <option value="">-- Pilih Nama Rekening --</option>
                                             {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
                                         </select>
                                     </div>
@@ -234,55 +261,90 @@ export const InputDashboard: React.FC = () => {
 
                 {/* My Documents Table */}
                 <div className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="p-6 border-b border-gray-100">
+                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <h3 className="text-lg font-bold text-gray-800">Daftar Data Saya</h3>
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">Show</span>
+                                <select
+                                    value={perPage}
+                                    onChange={e => setPerPage(Number(e.target.value))}
+                                    className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                >
+                                    {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                                </select>
+                                <span className="text-sm text-gray-600">entries</span>
+                            </div>
+                            <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search..."
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className="text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none w-48"
+                                />
+                            </div>
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-gray-50/50 border-b border-gray-100 text-xs uppercase tracking-wider text-gray-500 font-semibold">
-                                    <th className="p-4">No</th><th className="p-4">Kategori</th><th className="p-4">Tahun</th>
-                                    <th className="p-4">TW</th><th className="p-4">Periode</th><th className="p-4">Nominal</th>
-                                    <th className="p-4">Lampiran</th><th className="p-4 text-center">Status</th>
-                                    <th className="p-4 text-center">Kesesuaian</th><th className="p-4 text-center">Aksi</th>
+                                    <th className="p-4">No</th>
+                                    <th className="p-4">Nama Rekening</th>
+                                    <th className="p-4">Tahun</th>
+                                    <th className="p-4">TW</th>
+                                    <th className="p-4">Periode</th>
+                                    <th className="p-4">Pelaporan</th>
+                                    <th className="p-4">Verifikasi</th>
+                                    <th className="p-4 text-center">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {loadingDocs ? (
-                                    <tr><td colSpan={10} className="p-8 text-center"><Loader2 className="animate-spin mx-auto text-gray-400" /></td></tr>
-                                ) : documents.length === 0 ? (
-                                    <tr><td colSpan={10} className="p-8 text-center text-gray-500">Belum ada data.</td></tr>
-                                ) : documents.map((doc, idx) => (
-                                    <tr key={doc.id} className="hover:bg-gray-50/50">
-                                        <td className="p-4 text-sm">{idx + 1}</td>
-                                        <td className="p-4 text-sm font-medium">{doc.kategori}</td>
-                                        <td className="p-4 text-sm">{doc.tahun}</td>
-                                        <td className="p-4 text-sm">{doc.triwulan}</td>
-                                        <td className="p-4 text-sm">{doc.periode}</td>
-                                        <td className="p-4 text-sm font-medium">Rp {doc.nominal_pelaporan.toLocaleString('id-ID')}</td>
-                                        <td className="p-4 text-sm text-indigo-600 truncate max-w-[200px]">{doc.lampiran_nama_asli}</td>
-                                        <td className="p-4 text-center">
-                                            <span className={clsx('px-2 py-1 rounded-full text-xs font-medium border', STATUS_VERIFIKASI[doc.status_verifikasi]?.color)}>
-                                                {STATUS_VERIFIKASI[doc.status_verifikasi]?.label}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className={clsx('px-2 py-1 rounded-full text-xs font-medium border', HASIL_KESESUAIAN[doc.hasil_kesesuaian]?.color)}>
-                                                {HASIL_KESESUAIAN[doc.hasil_kesesuaian]?.label}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            {doc.status_verifikasi === 'menunggu' ? (
-                                                <button onClick={() => handleDelete(doc.id)} title="Hapus"
-                                                    className="p-1.5 hover:bg-red-100 text-red-500 rounded-lg transition-colors">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            ) : <span className="text-xs text-gray-400">-</span>}
-                                        </td>
-                                    </tr>
-                                ))}
+                                    <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="animate-spin mx-auto text-gray-400" /></td></tr>
+                                ) : displayedDocuments.length === 0 ? (
+                                    <tr><td colSpan={8} className="p-8 text-center text-gray-500">Belum ada data.</td></tr>
+                                ) : displayedDocuments.map((doc, idx) => {
+                                    const nominalColor = getNominalColor(doc);
+                                    const nerNominal = getNerNominal(doc);
+
+                                    return (
+                                        <tr key={doc.id} className="hover:bg-gray-50/50">
+                                            <td className="p-4 text-sm">{idx + 1}</td>
+                                            <td className="p-4 text-sm font-medium">{doc.kategori}</td>
+                                            <td className="p-4 text-sm">{doc.tahun}</td>
+                                            <td className="p-4 text-sm">{doc.triwulan}</td>
+                                            <td className="p-4 text-sm">{doc.periode}</td>
+                                            <td className={clsx('p-4 text-sm font-semibold', nominalColor)}>
+                                                Rp {doc.nominal_pelaporan.toLocaleString('id-ID')}
+                                            </td>
+                                            <td className={clsx('p-4 text-sm font-semibold', nominalColor)}>
+                                                {nerNominal !== null ? (
+                                                    `Rp ${nerNominal.toLocaleString('id-ID')}`
+                                                ) : (
+                                                    <span className="text-gray-300">-</span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                {doc.status_verifikasi === 'menunggu' ? (
+                                                    <button onClick={() => handleDelete(doc.id)} title="Hapus"
+                                                        className="p-1.5 hover:bg-red-100 text-red-500 rounded-lg transition-colors">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="px-6 py-3 border-t border-gray-100">
+                        <p className="text-sm text-gray-500">
+                            Showing {displayedDocuments.length > 0 ? 1 : 0} to {displayedDocuments.length} of {filteredDocuments.length} entries
+                        </p>
                     </div>
                 </div>
             </main>

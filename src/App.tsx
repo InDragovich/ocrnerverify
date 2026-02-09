@@ -4,6 +4,7 @@ import { InputDashboard } from './pages/InputDashboard';
 import { VerifierDashboard } from './pages/VerifierDashboard';
 import { DashboardPage } from './pages/DashboardPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
+import { AuditLogPage } from './pages/AuditLogPage';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/verify" element={<VerifierDashboard />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
+        <Route path="/audit-logs" element={<AuditLogPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
