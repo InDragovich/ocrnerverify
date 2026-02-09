@@ -64,7 +64,7 @@ class VerifikasiSeeder extends Seeder
             ],
             [
                 'user_id' => 3,
-                'kategori' => 'Air',
+                'kategori' => 'Air/Gas',
                 'tahun' => 2025,
                 'triwulan' => 3,
                 'periode' => 'Agustus',

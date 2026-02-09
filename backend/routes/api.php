@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BatchVerifikasiController;
 use App\Http\Controllers\MockOcrNerController;
@@ -12,6 +13,11 @@ Route::post('/login', [AuthController::class, 'login']);
 
 // Mock OCR-NER endpoint (accessible internally)
 Route::post('/mock/ocr-ner', [MockOcrNerController::class, 'extract']);
+
+// Lampiran preview (auth via query token for browser direct requests)
+Route::middleware(['auth.query', 'auth:sanctum'])->group(function () {
+    Route::get('/verifikasi/{id}/lampiran', [VerifikasiController::class, 'lampiran']);
+});
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -38,11 +44,13 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:operator');
     Route::delete('/verifikasi/{id}', [VerifikasiController::class, 'destroy'])
         ->middleware('role:operator');
-    Route::get('/verifikasi/{id}/lampiran', [VerifikasiController::class, 'lampiran']);
-
     // Keputusan manual
     Route::put('/verifikasi/{id}/keputusan', [VerifikasiController::class, 'keputusan'])
         ->middleware('role:verifikator,super_admin');
+
+    // Audit logs
+    Route::get('/audit-logs', [AuditLogController::class, 'index'])
+        ->middleware('role:super_admin');
 
     // Admin user management
     Route::prefix('admin')->middleware('role:super_admin')->group(function () {

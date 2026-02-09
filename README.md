@@ -2,8 +2,8 @@
 
 Web application untuk verifikasi dokumen laporan subsidi operasional (biaya rutin) dengan integrasi OCR dan NER.
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend**: Laravel 11 + Sanctum + Queue
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4
+- **Backend**: Laravel 11 + Sanctum + Queue (database)
 - **Database**: SQLite (development) / MySQL (production)
 
 ---
@@ -32,9 +32,9 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 **Backend (baru):**
 - Laravel 11 project dengan Sanctum authentication
 - 3 Model: `User`, `VerifikasiBiayaRutin`, `AuditLog`
-- 5 Controller: `AuthController`, `VerifikasiController`, `BatchVerifikasiController`, `MockOcrNerController`, `Admin/UserController`
+- 6 Controller: `AuthController`, `VerifikasiController`, `BatchVerifikasiController`, `MockOcrNerController`, `AuditLogController`, `Admin/UserController`
 - 5 Form Request: validasi input terstruktur
-- 1 Middleware: `EnsureRole` (role-based access control)
+- 2 Middleware: `EnsureRole` (role-based access), `AuthenticateFromQuery` (token query param)
 - 1 Queue Job: `ProcessVerifikasiJob` (OCR-NER + matching otomatis)
 - 3 Service: `OcrNerService`, `MatchingService`, `AuditService`
 - Mock OCR-NER API untuk prototype (70% sukses, 20% partial, 10% gagal)
@@ -43,61 +43,304 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 - Queue berbasis database dengan retry 3x dan timeout 120 detik
 - Audit trail: login, logout, CRUD, verifikasi otomatis/manual
 
+### v1.2.0 — UI/UX Revision & Audit Logs (2025-02-09)
+**Frontend:**
+- Rename kolom tabel: "Kategori" -> "Nama Rekening", "Nominal" -> "Pelaporan"
+- Tambah kolom "Verifikasi" (hasil NER nominal) dengan warna status:
+  - Abu-abu: belum diverifikasi
+  - Hijau: Pelaporan == Verifikasi (nominal cocok)
+  - Merah: Pelaporan != Verifikasi (nominal tidak cocok)
+- Hapus kolom "Lampiran", "Status", dan "Kesesuaian" dari tabel (info tersedia di detail modal)
+- Gabung kategori "Air" dan "Gas" menjadi "Air/Gas"
+- Halaman baru: `AuditLogPage` — riwayat aktivitas user (super_admin only)
+- Update `Header`: navigasi role-based dengan active state, responsive mobile nav
+- DataTable-style layout: Show entries, search, pagination di semua tabel
+- Fix preview lampiran (gambar & PDF) di detail modal
+
+**Backend:**
+- Tambah `AuditLogController` — list audit logs dengan filter & pagination
+- Tambah middleware `AuthenticateFromQuery` — fix preview lampiran (token via query param)
+- Update seeder: kategori "Air" -> "Air/Gas"
+
 ---
 
 ## Prasyarat
 
-1. **Node.js >= 18** + npm — [nodejs.org](https://nodejs.org/)
-2. **PHP >= 8.2** + Composer — [getcomposer.org](https://getcomposer.org/)
-3. **Git** — [git-scm.com](https://git-scm.com/)
-4. **SQLite** (sudah built-in di PHP)
+Sebelum menjalankan aplikasi, pastikan software berikut sudah terinstall:
+
+1. **Node.js >= 18** + npm — [https://nodejs.org/](https://nodejs.org/)
+2. **PHP >= 8.2** — Bisa via Laragon, XAMPP, atau install manual
+3. **Composer** — [https://getcomposer.org/](https://getcomposer.org/)
+4. **Git** — [https://git-scm.com/](https://git-scm.com/)
+5. **SQLite** — Sudah built-in di PHP (pastikan extension `pdo_sqlite` aktif)
 
 ---
 
-## Cara Menjalankan (Lokal)
+## Cara Menjalankan (Lokal) — Panduan Lengkap
 
-### 1. Clone Repository
+### Opsi A: Menggunakan Laragon (Direkomendasikan untuk Windows)
+
+#### 1. Install Laragon
+
+1. Download Laragon Full dari [https://laragon.org/download/](https://laragon.org/download/)
+2. Install dan buka Laragon
+3. Laragon sudah menyediakan PHP, MySQL, Apache, Node.js, dan Composer
+
+#### 2. Konfigurasi PATH PHP di Terminal
+
+> **PENTING**: Jika terminal (PowerShell/CMD) tidak mengenali `php` atau `composer`, Anda perlu menambahkan PATH PHP Laragon secara manual.
+
+**PowerShell (Terminal bawaan VS Code / Windows Terminal):**
+```powershell
+# Sesuaikan path dengan lokasi instalasi Laragon Anda
+$env:PATH = "C:\laragon\bin\php\php-8.2.22-Win32-vs16-x64;" + $env:PATH
+
+# Atau jika Laragon di lokasi lain (contoh):
+$env:PATH = "E:\Softwares\laragon\bin\php\php-8.4.9-Win32-vs17-x64;" + $env:PATH
+```
+
+**CMD (Command Prompt):**
+```cmd
+set PATH=C:\laragon\bin\php\php-8.2.22-Win32-vs16-x64;%PATH%
+```
+
+> **Catatan**: Perintah `set $env:PATH` di atas hanya berlaku untuk sesi terminal yang aktif saja. Setiap kali membuka terminal baru, Anda perlu menjalankan ulang perintah ini. Jika ingin permanen, tambahkan ke System Environment Variables Windows.
+
+**Cara cek apakah PHP sudah terbaca:**
+```bash
+php -v
+# Harus muncul versi PHP >= 8.2
+
+composer -V
+# Harus muncul versi Composer
+```
+
+#### 3. Clone Repository
 
 ```bash
 git clone https://github.com/InDragovich/SIM-LPU.git
 cd SIM-LPU
 ```
 
-### 2. Setup Backend (Laravel)
+#### 4. Setup Backend (Laravel)
+
+Buka **Terminal 1** (untuk backend):
 
 ```bash
+cd backend
+composer install
+```
+
+Jika `composer` tidak ditemukan:
+```powershell
+# Tambahkan path Composer ke PATH (PowerShell)
+$env:PATH = "C:\laragon\bin\composer;" + $env:PATH
+# Atau jika Composer di lokasi lain:
+$env:PATH = "C:\Users\NAMAUSER\AppData\Roaming\Composer\vendor\bin;" + $env:PATH
+```
+
+Lanjutkan setup:
+```bash
+# Copy file environment
+cp .env.example .env
+
+# Generate application key
+php artisan key:generate
+
+# Jalankan migrasi database + data demo
+php artisan migrate --seed
+```
+
+> **Jika error "could not find driver"**: Pastikan extension `pdo_sqlite` aktif di `php.ini` Laragon. Buka file `php.ini` (biasanya di `C:\laragon\bin\php\php-x.x.x\php.ini`), cari baris `;extension=pdo_sqlite` dan hapus tanda titik koma (`;`) di depannya.
+
+#### 5. Jalankan Backend
+
+**Anda butuh 2 terminal terpisah untuk backend!**
+
+**Terminal 1 — Laravel Server:**
+```powershell
+# Jangan lupa set PATH dulu jika terminal baru
+$env:PATH = "C:\laragon\bin\php\php-8.2.22-Win32-vs16-x64;" + $env:PATH
+
+cd backend
+php artisan serve
+# Server berjalan di http://localhost:8000
+```
+
+**Terminal 2 — Queue Worker (WAJIB untuk batch verifikasi):**
+```powershell
+# Jangan lupa set PATH dulu jika terminal baru
+$env:PATH = "C:\laragon\bin\php\php-8.2.22-Win32-vs16-x64;" + $env:PATH
+
+cd backend
+php artisan queue:listen --tries=1
+# Terminal ini harus tetap terbuka selama menggunakan fitur verifikasi otomatis
+```
+
+#### 6. Setup & Jalankan Frontend
+
+**Terminal 3 — React Dev Server:**
+```bash
+# Di root folder project (bukan di folder backend)
+cd SIM-LPU
+npm install
+npm run dev
+# Frontend berjalan di http://localhost:5173
+```
+
+#### 7. Buka Aplikasi
+
+Buka browser dan akses: **http://localhost:5173**
+
+---
+
+### Opsi B: Menggunakan XAMPP
+
+#### 1. Install XAMPP
+
+1. Download dari [https://www.apachefriends.org/](https://www.apachefriends.org/)
+2. Install dengan komponen PHP (minimal) tercentang
+3. XAMPP biasanya terinstall di `C:\xampp`
+
+#### 2. Konfigurasi PATH PHP di Terminal
+
+**PowerShell:**
+```powershell
+$env:PATH = "C:\xampp\php;" + $env:PATH
+```
+
+**CMD:**
+```cmd
+set PATH=C:\xampp\php;%PATH%
+```
+
+**Verifikasi:**
+```bash
+php -v
+```
+
+#### 3. Install Composer (jika belum)
+
+1. Download installer dari [https://getcomposer.org/download/](https://getcomposer.org/download/)
+2. Jalankan installer, pilih PHP dari XAMPP (`C:\xampp\php\php.exe`)
+3. Verifikasi: `composer -V`
+
+#### 4. Aktifkan Extension SQLite
+
+1. Buka file `C:\xampp\php\php.ini`
+2. Cari dan uncomment (hapus `;`) baris berikut:
+   ```
+   extension=pdo_sqlite
+   extension=sqlite3
+   extension=fileinfo
+   ```
+3. Simpan file
+
+#### 5. Clone dan Setup (sama seperti Laragon)
+
+```bash
+git clone https://github.com/InDragovich/SIM-LPU.git
+cd SIM-LPU
+
+# Setup backend
 cd backend
 composer install
 cp .env.example .env
 php artisan key:generate
 php artisan migrate --seed
-```
 
-### 3. Jalankan Backend
-
-```bash
-# Terminal 1 — Laravel server
-cd backend
+# Jalankan backend (Terminal 1)
 php artisan serve
 
-# Terminal 2 — Queue worker (wajib untuk batch verifikasi)
-cd backend
+# Jalankan queue worker (Terminal 2 — baru)
 php artisan queue:listen --tries=1
-```
 
-### 4. Setup & Jalankan Frontend
-
-```bash
-# Terminal 3 — di root project
+# Setup & jalankan frontend (Terminal 3 — baru, di root project)
+cd ..
 npm install
 npm run dev
 ```
 
-### 5. Buka Aplikasi
+#### 6. Buka Aplikasi
 
-Akses `http://localhost:5173` di browser.
+Akses **http://localhost:5173** di browser.
 
-### Akun Demo
+---
+
+### Opsi C: Tanpa Laragon / XAMPP (Install Manual)
+
+1. Install PHP 8.2+ dari [https://windows.php.net/download](https://windows.php.net/download)
+2. Install Composer dari [https://getcomposer.org/](https://getcomposer.org/)
+3. Install Node.js 18+ dari [https://nodejs.org/](https://nodejs.org/)
+4. Tambahkan semua ke PATH environment variable
+5. Ikuti langkah clone dan setup yang sama seperti di atas
+
+---
+
+## Troubleshooting (Masalah Umum)
+
+### `php` tidak ditemukan di terminal
+```
+'php' is not recognized as an internal or external command
+```
+**Solusi:** Tambahkan PATH PHP sesuai lokasi instalasi Anda:
+```powershell
+$env:PATH = "LOKASI_PHP_ANDA;" + $env:PATH
+```
+
+### `composer` tidak ditemukan
+```
+'composer' is not recognized as an internal or external command
+```
+**Solusi:** Install Composer atau tambahkan ke PATH:
+```powershell
+$env:PATH = "C:\ProgramData\ComposerSetup\bin;" + $env:PATH
+```
+
+### Error "could not find driver" saat migrasi
+**Solusi:** Aktifkan extension `pdo_sqlite` di `php.ini`:
+1. Cari file `php.ini` (jalankan `php --ini` untuk melihat lokasinya)
+2. Uncomment: `extension=pdo_sqlite`
+3. Restart terminal
+
+### Error "SQLSTATE[HY000]: General error: 1 no such table"
+**Solusi:** Jalankan ulang migrasi:
+```bash
+cd backend
+php artisan migrate:fresh --seed
+```
+
+### Verifikasi otomatis tidak berjalan (stuck di "Memproses...")
+**Solusi:** Pastikan Queue Worker berjalan di terminal terpisah:
+```bash
+cd backend
+php artisan queue:listen --tries=1
+```
+Terminal ini HARUS tetap terbuka selama menggunakan fitur batch verifikasi.
+
+### Port 8000 sudah digunakan
+**Solusi:** Gunakan port lain:
+```bash
+php artisan serve --port=8001
+```
+Lalu update `VITE_API_BASE_URL` di file `.env` root project:
+```
+VITE_API_BASE_URL=http://localhost:8001/api
+```
+
+### npm error saat install
+**Solusi:** Hapus `node_modules` dan install ulang:
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### Preview lampiran error "Route [login] not defined"
+**Solusi:** Sudah diperbaiki di v1.2.0. Pastikan middleware `AuthenticateFromQuery` sudah terdaftar di `backend/bootstrap/app.php`.
+
+---
+
+## Akun Demo
 
 | Username | Password | Role | Region |
 |----------|----------|------|--------|
@@ -105,8 +348,13 @@ Akses `http://localhost:5173` di browser.
 | `input_jkt` | `password` | Operator | Jakarta |
 | `input_sby` | `password` | Operator | Surabaya |
 | `input_mks` | `password` | Operator | Makassar |
-| `verificator` | `password` | Verifikator | — |
-| `superadmin` | `password` | Super Admin | — |
+| `verificator` | `password` | Verifikator | - |
+| `superadmin` | `password` | Super Admin | - |
+
+### Panduan Singkat per Role:
+- **Operator** (`input_medan`, dll): Input data verifikasi biaya rutin + upload lampiran
+- **Verifikator** (`verificator`): Lihat semua data, jalankan verifikasi otomatis (batch), beri keputusan manual
+- **Super Admin** (`superadmin`): Semua fitur Verifikator + kelola user + lihat audit logs + dashboard statistik
 
 ---
 
@@ -122,6 +370,7 @@ Akses `http://localhost:5173` di browser.
 - `php artisan serve` — Laravel server (port 8000)
 - `php artisan queue:listen` — Queue worker untuk batch processing
 - `php artisan migrate --seed` — Jalankan migrasi + data demo
+- `php artisan migrate:fresh --seed` — Reset database + data demo (HATI-HATI: hapus semua data)
 
 ---
 
@@ -129,29 +378,31 @@ Akses `http://localhost:5173` di browser.
 
 ```
 SIM-LPU/
-├── src/                              # Frontend React + TypeScript
-│   ├── App.tsx                       # Router utama
-│   ├── main.tsx                      # Entry point
-│   ├── components/
-│   │   ├── Header.tsx                # Navbar global
-│   │   └── DetailModal.tsx           # Modal detail + keputusan
-│   ├── pages/
-│   │   ├── LoginPage.tsx             # Halaman login
-│   │   ├── DashboardPage.tsx         # Dashboard statistik
-│   │   ├── InputDashboard.tsx        # Form input operator
-│   │   ├── VerifierDashboard.tsx     # Tabel verifikasi + batch
-│   │   └── AdminUsersPage.tsx        # Kelola user (super admin)
-│   ├── services/
-│   │   ├── api.ts                    # Axios HTTP client
-│   │   ├── authService.ts            # Login/logout
-│   │   ├── verifikasiService.ts      # CRUD verifikasi + batch
-│   │   └── userService.ts            # CRUD user admin
-│   ├── data/
-│   │   └── constants.ts              # Kategori, bulan, warna status
-│   └── utils/
-│       └── storage.ts                # Helper localStorage
 │
-├── backend/                          # Backend Laravel 11
+├── src/                                    # Frontend (React + TypeScript)
+│   ├── App.tsx                             # Router utama
+│   ├── main.tsx                            # Entry point
+│   ├── components/
+│   │   ├── Header.tsx                      # Navbar global + navigasi role-based
+│   │   └── DetailModal.tsx                 # Modal detail + OCR/NER + keputusan
+│   ├── pages/
+│   │   ├── LoginPage.tsx                   # Halaman login
+│   │   ├── DashboardPage.tsx               # Dashboard statistik
+│   │   ├── InputDashboard.tsx              # Form input operator
+│   │   ├── VerifierDashboard.tsx           # Tabel verifikasi + batch
+│   │   ├── AdminUsersPage.tsx              # Kelola user (super admin)
+│   │   └── AuditLogPage.tsx                # Riwayat aktivitas (super admin)
+│   ├── services/
+│   │   ├── api.ts                          # Axios HTTP client
+│   │   ├── authService.ts                  # Login/logout
+│   │   ├── verifikasiService.ts            # CRUD verifikasi + batch
+│   │   └── userService.ts                  # CRUD user admin
+│   ├── data/
+│   │   └── constants.ts                    # Nama rekening, bulan, warna status
+│   └── utils/
+│       └── storage.ts                      # Helper localStorage
+│
+├── backend/                                # Backend (Laravel 11)
 │   ├── app/
 │   │   ├── Http/
 │   │   │   ├── Controllers/
@@ -159,10 +410,12 @@ SIM-LPU/
 │   │   │   │   ├── VerifikasiController.php
 │   │   │   │   ├── BatchVerifikasiController.php
 │   │   │   │   ├── MockOcrNerController.php
+│   │   │   │   ├── AuditLogController.php
 │   │   │   │   └── Admin/UserController.php
 │   │   │   ├── Middleware/
-│   │   │   │   └── EnsureRole.php
-│   │   │   └── Requests/              # 5 Form Request validasi
+│   │   │   │   ├── EnsureRole.php          # Role-based access control
+│   │   │   │   └── AuthenticateFromQuery.php # Token via query param (lampiran)
+│   │   │   └── Requests/                   # 5 Form Request validasi
 │   │   ├── Jobs/
 │   │   │   └── ProcessVerifikasiJob.php
 │   │   ├── Models/
@@ -170,16 +423,16 @@ SIM-LPU/
 │   │   │   ├── VerifikasiBiayaRutin.php
 │   │   │   └── AuditLog.php
 │   │   └── Services/
-│   │       ├── OcrNerService.php      # Integrasi API OCR-NER
-│   │       ├── MatchingService.php    # Pencocokan data
-│   │       └── AuditService.php       # Audit trail
+│   │       ├── OcrNerService.php           # Integrasi API OCR-NER
+│   │       ├── MatchingService.php         # Pencocokan data
+│   │       └── AuditService.php            # Audit trail
 │   ├── config/
-│   │   └── ocr_ner.php               # Konfigurasi API OCR-NER
+│   │   └── ocr_ner.php                     # Konfigurasi API OCR-NER
 │   ├── database/
-│   │   ├── migrations/                # 6 migration files
-│   │   └── seeders/                   # User + data demo
+│   │   ├── migrations/                     # 6 migration files
+│   │   └── seeders/                        # User + data demo
 │   └── routes/
-│       └── api.php                    # 15+ API endpoints
+│       └── api.php                         # 15+ API endpoints
 │
 ├── package.json
 ├── vite.config.ts
@@ -191,15 +444,29 @@ SIM-LPU/
 
 ## Konfigurasi Environment
 
-**Frontend** (`.env` di root):
+**Frontend** (`.env` di root project):
 ```
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
-**Backend** (`.env` di `backend/`):
+**Backend** (`backend/.env`):
 ```
 OCR_NER_API_URL=http://localhost:8000/api/mock/ocr-ner
 OCR_NER_USE_MOCK=true
 QUEUE_CONNECTION=database
 FRONTEND_URL=http://localhost:5173
 ```
+
+---
+
+## Ringkasan Terminal yang Dibutuhkan
+
+Untuk menjalankan aplikasi secara lokal, Anda membutuhkan **3 terminal terpisah**:
+
+| Terminal | Perintah | Keterangan |
+|----------|----------|------------|
+| Terminal 1 | `cd backend && php artisan serve` | Laravel API server (port 8000) |
+| Terminal 2 | `cd backend && php artisan queue:listen --tries=1` | Queue worker (wajib untuk verifikasi) |
+| Terminal 3 | `npm run dev` | React dev server (port 5173) |
+
+> **Penting:** Setiap terminal baru yang dibuka perlu menjalankan `$env:PATH = "LOKASI_PHP;" + $env:PATH` jika PHP belum tersedia secara global di system PATH.

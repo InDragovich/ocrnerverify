@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
 import { STATUS_VERIFIKASI, HASIL_KESESUAIAN } from '../data/constants';
-import { X, FileText, Image, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { X, FileText, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DetailModalProps {
@@ -12,11 +12,10 @@ interface DetailModalProps {
 
 export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClose }) => {
     const [doc, setDoc] = useState<VerifikasiItem>(initialDoc);
-    const [loading, setLoading] = useState(false);
     const [tab, setTab] = useState<'info' | 'ocr' | 'keputusan'>('info');
 
     // Keputusan form
-    const [keputusan, setKeputusan] = useState(doc.hasil_kesesuaian || 'belum_ditentukan');
+    const [keputusan, setKeputusan] = useState<string>(doc.hasil_kesesuaian || 'belum_ditentukan');
     const [catatan, setCatatan] = useState(doc.catatan_verifikator || '');
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState('');
@@ -99,7 +98,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
                                 <h4 className="font-semibold text-gray-800 mb-2">Data Input</h4>
-                                <InfoRow label="Kategori" value={doc.kategori} />
+                                <InfoRow label="Nama Rekening" value={doc.kategori} />
                                 <InfoRow label="Tahun" value={String(doc.tahun)} />
                                 <InfoRow label="Triwulan" value={String(doc.triwulan)} />
                                 <InfoRow label="Periode" value={doc.periode} />
