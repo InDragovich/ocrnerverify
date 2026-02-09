@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
 import { STATUS_VERIFIKASI, HASIL_KESESUAIAN } from '../data/constants';
+import { LampiranViewer } from './LampiranViewer';
 import { X, FileText, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -48,9 +49,6 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
         }
         setSaving(false);
     };
-
-    const lampiranUrl = verifikasiService.getLampiranUrl(doc.id);
-    const isImage = doc.lampiran_nama_asli?.match(/\.(jpg|jpeg|png)$/i);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -129,28 +127,15 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                                 </div>
                             </div>
 
-                            {/* Lampiran Preview */}
+                            {/* Lampiran – viewer inline (PDF, DOCX, XLSX, gambar) */}
                             <div>
                                 <h4 className="font-semibold text-gray-800 mb-2">Lampiran</h4>
                                 <p className="text-sm text-gray-500 mb-3">{doc.lampiran_nama_asli}</p>
-                                <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50 min-h-[300px] flex items-center justify-center">
-                                    {isImage ? (
-                                        <img src={lampiranUrl} alt="Lampiran" className="max-w-full max-h-[400px] object-contain" />
-                                    ) : (
-                                        <div className="text-center p-6">
-                                            <FileText size={48} className="mx-auto text-gray-300 mb-3" />
-                                            <p className="text-sm text-gray-500 mb-2">File PDF</p>
-                                            <a
-                                                href={lampiranUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-indigo-600 hover:underline text-sm font-medium"
-                                            >
-                                                Buka di tab baru
-                                            </a>
-                                        </div>
-                                    )}
-                                </div>
+                                <LampiranViewer
+                                    verifikasiId={doc.id}
+                                    filename={doc.lampiran_nama_asli}
+                                    className="min-h-[320px]"
+                                />
                             </div>
                         </div>
                     )}
