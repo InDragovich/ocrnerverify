@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class KeputusanRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        $user = $this->user();
+        return $user && ($user->isVerifikator() || $user->isSuperAdmin());
+    }
+
+    public function rules(): array
+    {
+        return [
+            'hasil_kesesuaian' => 'required|string|in:sesuai,tidak_sesuai',
+            'catatan_verifikator' => 'nullable|string|max:2000',
+        ];
+    }
+}

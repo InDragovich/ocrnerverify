@@ -1,0 +1,140 @@
+import api from './api';
+
+export interface VerifikasiItem {
+    id: number;
+    user_id: number;
+    verifikator_id: number | null;
+    kategori: string;
+    tahun: number;
+    triwulan: number;
+    periode: string;
+    regional: string;
+    kcu: string;
+    kpc: string;
+    nominal_pelaporan: number;
+    lampiran_path: string;
+    lampiran_nama_asli: string;
+    status_verifikasi: 'menunggu' | 'diproses' | 'selesai' | 'gagal';
+    hasil_kesesuaian: 'sesuai' | 'tidak_sesuai' | 'belum_ditentukan';
+    catatan_verifikator: string | null;
+    hasil_ekstraksi_teks: string | null;
+    hasil_entitas: Record<string, string | null> | null;
+    error_message: string | null;
+    verified_at: string | null;
+    created_at: string;
+    updated_at: string;
+    operator?: { id: number; name: string; username: string; region?: string; kcu?: string; kcp?: string };
+    verifikator?: { id: number; name: string; username: string } | null;
+}
+
+export interface PaginatedResponse {
+    data: VerifikasiItem[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+}
+
+export interface StatsResponse {
+    status_verifikasi: {
+        menunggu: number;
+        diproses: number;
+        selesai: number;
+        gagal: number;
+    };
+    hasil_kesesuaian: {
+        sesuai: number;
+        tidak_sesuai: number;
+        belum_ditentukan: number;
+    };
+}
+
+export interface BatchStatusResponse {
+    total: number;
+    completed: number;
+    processing: number;
+    failed: number;
+    items: Array<{
+        id: number;
+        status_verifikasi: string;
+        hasil_kesesuaian: string;
+        catatan_verifikator: string | null;
+        error_message: string | null;
+    }>;
+}
+
+export interface Filters {
+    kategori?: string;
+    tahun?: string;
+    triwulan?: string;
+    periode?: string;
+    status_verifikasi?: string;
+    hasil_kesesuaian?: string;
+    page?: number;
+    per_page?: number;
+}
+
+export const verifikasiService = {
+    async getList(filters: Filters = {}): Promise<PaginatedResponse> {
+        const params = Object.fromEntries(
+            Object.entries(filters).filter(([, v]) => v !== undefined && v !== '')
+        );
+        const { data } = await api.get<PaginatedResponse>('/verifikasi', { params });
+        return data;
+    },
+
+    async getDetail(id: number): Promise<VerifikasiItem> {
+        const { data } = await api.get<VerifikasiItem>(`/verifikasi/${id}`);
+        return data;
+    },
+
+    async create(formData: FormData): Promise<{ message: string; data: VerifikasiItem }> {
+        const { data } = await api.post('/verifikasi', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return data;
+    },
+
+    async update(id: number, formData: FormData): Promise<{ message: string; data: VerifikasiItem }> {
+        const { data } = await api.post(`/verifikasi/${id}`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return data;
+    },
+
+    async delete(id: number): Promise<{ message: string }> {
+        const { data } = await api.delete(`/verifikasi/${id}`);
+        return data;
+    },
+
+    getLampiranUrl(id: number): string {
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+        const token = localStorage.getItem('auth_token');
+        return `${baseUrl}/verifikasi/${id}/lampiran?token=${token}`;
+    },
+
+    async getStats(): Promise<StatsResponse> {
+        const { data } = await api.get<StatsResponse>('/verifikasi/stats');
+        return data;
+    },
+
+    async batchVerify(ids: number[]): Promise<{ message: string; total_jobs: number; ids: number[] }> {
+        const { data } = await api.post('/verifikasi/batch', { ids });
+        return data;
+    },
+
+    async getBatchStatus(ids: number[]): Promise<BatchStatusResponse> {
+        const { data } = await api.get<BatchStatusResponse>('/verifikasi/batch-status', {
+            params: { ids: ids.join(',') },
+        });
+        return data;
+    },
+
+    async setKeputusan(id: number, hasil_kesesuaian: string, catatan_verifikator: string | null): Promise<{ message: string; data: VerifikasiItem }> {
+        const { data } = await api.put(`/verifikasi/${id}/keputusan`, {
+            hasil_kesesuaian,
+            catatan_verifikator,
+        });
+        return data;
+    },
+};

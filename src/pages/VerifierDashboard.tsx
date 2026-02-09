@@ -1,65 +1,162 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { storage } from '../utils/storage';
-import type { SubsidyDocument, DocumentStatus } from '../utils/storage';
-import type { User } from '../data/mockData';
+import { authService } from '../services/authService';
+import type { User } from '../services/authService';
+import { verifikasiService } from '../services/verifikasiService';
+import type { VerifikasiItem, Filters } from '../services/verifikasiService';
+import { CATEGORIES, MONTHS, STATUS_VERIFIKASI, HASIL_KESESUAIAN } from '../data/constants';
 import { Header } from '../components/Header';
-import { CheckCircle, XCircle, FileText, Filter, Eye, Wand2, X } from 'lucide-react';
-
+import { DetailModal } from '../components/DetailModal';
+import {
+    Filter, Eye, Loader2, ChevronLeft, ChevronRight,
+    PlayCircle, CheckSquare, Square, MinusSquare,
+} from 'lucide-react';
 import clsx from 'clsx';
-
 
 export const VerifierDashboard: React.FC = () => {
     const navigate = useNavigate();
     const [user, setUser] = useState<User | null>(null);
-    const [documents, setDocuments] = useState<SubsidyDocument[]>([]);
-    const [filter, setFilter] = useState<DocumentStatus | 'ALL'>('ALL');
-    const [previewDoc, setPreviewDoc] = useState<SubsidyDocument | null>(null);
-    const [processingId, setProcessingId] = useState<string | null>(null);
 
+    // filters
+    const [filters, setFilters] = useState<Filters>({
+        kategori: '', tahun: '', triwulan: '', status_verifikasi: '', hasil_kesesuaian: '', page: 1, per_page: 15,
+    });
+
+    // data
+    const [documents, setDocuments] = useState<VerifikasiItem[]>([]);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const [loading, setLoading] = useState(false);
+
+    // selection
+    const [selected, setSelected] = useState<Set<number>>(new Set());
+
+    // batch processing
+    const [batchProcessing, setBatchProcessing] = useState(false);
+    const [batchIds, setBatchIds] = useState<number[]>([]);
+    const [batchProgress, setBatchProgress] = useState({ total: 0, completed: 0, processing: 0, failed: 0 });
+    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // detail modal
+    const [detailDoc, setDetailDoc] = useState<VerifikasiItem | null>(null);
 
     useEffect(() => {
-        const currentUser = storage.getCurrentUser();
-        if (!currentUser || currentUser.role !== 'VERIFICATOR') {
+        const currentUser = authService.getCurrentUser();
+        if (!currentUser || (currentUser.role !== 'verifikator' && currentUser.role !== 'super_admin')) {
             navigate('/');
             return;
         }
         setUser(currentUser);
-        loadDocuments();
     }, [navigate]);
 
-    const loadDocuments = () => {
-        setDocuments(storage.getDocuments().reverse()); // Newest first
+    const loadDocuments = useCallback(async () => {
+        setLoading(true);
+        try {
+            const result = await verifikasiService.getList(filters);
+            setDocuments(result.data);
+            setTotalPages(result.last_page);
+            setTotalItems(result.total);
+        } catch {
+            // silent
+        }
+        setLoading(false);
+    }, [filters]);
+
+    useEffect(() => {
+        if (user) loadDocuments();
+    }, [user, loadDocuments]);
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+        };
+    }, []);
+
+    const handleFilterChange = (key: string, value: string) => {
+        setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
+        setSelected(new Set());
     };
 
-    const handleUpdateStatus = (id: string, status: DocumentStatus) => {
-        storage.updateStatus(id, status);
-        loadDocuments();
+    const handlePageChange = (page: number) => {
+        setFilters(prev => ({ ...prev, page }));
+        setSelected(new Set());
     };
 
-    const handleAutoVerify = (doc: SubsidyDocument) => {
-        setProcessingId(doc.id);
+    // Checkbox logic
+    const selectableIds = documents
+        .filter(d => d.status_verifikasi === 'menunggu' || d.status_verifikasi === 'gagal')
+        .map(d => d.id);
 
-        // Simulate API Call delay
-        setTimeout(() => {
-            // Simulate 70% success rate for OCR/NER
-            const isValid = Math.random() > 0.3;
+    const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
+    const someSelected = selectableIds.some(id => selected.has(id)) && !allSelected;
 
-            if (isValid) {
-                storage.updateStatus(doc.id, 'VERIFIED');
-                loadDocuments();
-                alert(`Dokumen ${doc.category} valid! Otomatis terverifikasi.`);
-            } else {
-                alert(`Dokumen ${doc.category} TIDAK valid berdasarkan hasil scan. Silakan verifikasi manual.`);
-            }
-            setProcessingId(null);
-        }, 1500);
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelected(new Set());
+        } else {
+            setSelected(new Set(selectableIds));
+        }
     };
 
+    const toggleSelect = (id: number) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
 
-    const filteredDocs = filter === 'ALL'
-        ? documents
-        : documents.filter(d => d.status === filter);
+    // Batch verify
+    const handleBatchVerify = async () => {
+        if (selected.size === 0) return;
+        const ids = Array.from(selected);
+        setBatchProcessing(true);
+        setBatchIds(ids);
+        setBatchProgress({ total: ids.length, completed: 0, processing: ids.length, failed: 0 });
+
+        try {
+            await verifikasiService.batchVerify(ids);
+
+            // Start polling
+            pollingRef.current = setInterval(async () => {
+                try {
+                    const status = await verifikasiService.getBatchStatus(ids);
+                    setBatchProgress({
+                        total: status.total,
+                        completed: status.completed,
+                        processing: status.processing,
+                        failed: status.failed,
+                    });
+
+                    if (status.processing === 0) {
+                        // All done
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        pollingRef.current = null;
+                        setBatchProcessing(false);
+                        setBatchIds([]);
+                        setSelected(new Set());
+                        loadDocuments();
+                    }
+                } catch {
+                    // ignore polling errors
+                }
+            }, 3000);
+        } catch {
+            setBatchProcessing(false);
+            setBatchIds([]);
+        }
+    };
+
+    const progressPercent = batchProgress.total > 0
+        ? Math.round(((batchProgress.completed + batchProgress.failed) / batchProgress.total) * 100)
+        : 0;
+
+    const handleDetailClose = () => {
+        setDetailDoc(null);
+        loadDocuments(); // refresh in case keputusan was set
+    };
 
     if (!user) return null;
 
@@ -68,196 +165,225 @@ export const VerifierDashboard: React.FC = () => {
             <Header user={user} />
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Dashboard Verifikasi</h1>
-                        <p className="text-gray-500">Kelola dan verifikasi dokumen subsidi yang masuk.</p>
-                    </div>
+                {/* Header */}
+                <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-gray-900">Dashboard Verifikasi</h1>
+                    <p className="text-gray-500">Kelola dan verifikasi dokumen biaya rutin yang masuk.</p>
+                </div>
 
-                    <div className="flex items-center gap-3 bg-white p-2 rounded-xl shadow-sm border border-gray-100">
-                        <Filter size={18} className="text-gray-400 ml-2" />
-                        <select
-                            value={filter}
-                            onChange={(e) => setFilter(e.target.value as any)}
-                            className="bg-transparent border-none outline-none text-sm font-medium text-gray-700 cursor-pointer"
+                {/* Batch Progress */}
+                {batchProcessing && (
+                    <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-semibold text-indigo-700">
+                                Memproses verifikasi otomatis... ({batchProgress.completed + batchProgress.failed}/{batchProgress.total})
+                            </p>
+                            <span className="text-xs text-indigo-500">{progressPercent}%</span>
+                        </div>
+                        <div className="w-full bg-indigo-200 rounded-full h-2.5">
+                            <div
+                                className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
+                                style={{ width: `${progressPercent}%` }}
+                            />
+                        </div>
+                        {batchProgress.failed > 0 && (
+                            <p className="text-xs text-red-600 mt-1">{batchProgress.failed} item gagal diproses.</p>
+                        )}
+                    </div>
+                )}
+
+                {/* Filters & Actions */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+                    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                        <div className="flex items-center gap-2 text-gray-400">
+                            <Filter size={18} />
+                            <span className="text-sm font-medium text-gray-600">Filter:</span>
+                        </div>
+                        <div className="flex flex-wrap gap-3 flex-1">
+                            <select value={filters.kategori} onChange={e => handleFilterChange('kategori', e.target.value)}
+                                className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <option value="">Semua Kategori</option>
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <select value={filters.tahun} onChange={e => handleFilterChange('tahun', e.target.value)}
+                                className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <option value="">Semua Tahun</option>
+                                {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                            <select value={filters.triwulan} onChange={e => handleFilterChange('triwulan', e.target.value)}
+                                className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <option value="">Semua TW</option>
+                                {[1, 2, 3, 4].map(t => <option key={t} value={t}>TW {t}</option>)}
+                            </select>
+                            <select value={filters.status_verifikasi} onChange={e => handleFilterChange('status_verifikasi', e.target.value)}
+                                className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <option value="">Semua Status</option>
+                                {Object.entries(STATUS_VERIFIKASI).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                            </select>
+                            <select value={filters.hasil_kesesuaian} onChange={e => handleFilterChange('hasil_kesesuaian', e.target.value)}
+                                className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <option value="">Semua Kesesuaian</option>
+                                {Object.entries(HASIL_KESESUAIAN).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                            </select>
+                        </div>
+                        <button
+                            onClick={handleBatchVerify}
+                            disabled={selected.size === 0 || batchProcessing}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors whitespace-nowrap"
                         >
-                            <option value="ALL">Semua Status</option>
-                            <option value="PENDING">Menunggu Verifikasi</option>
-                            <option value="VERIFIED">Terverifikasi</option>
-                            <option value="REJECTED">Ditolak</option>
-                        </select>
+                            <PlayCircle size={18} />
+                            Verifikasi Otomatis ({selected.size})
+                        </button>
                     </div>
                 </div>
 
+                {/* Table */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-gray-50/50 border-b border-gray-100 text-xs uppercase tracking-wider text-gray-500 font-semibold">
-                                    <th className="p-4">Dokumen</th>
-                                    <th className="p-4">Penginput & Wilayah</th>
+                                    <th className="p-4 w-10">
+                                        <button onClick={toggleSelectAll} className="text-gray-400 hover:text-indigo-600 transition-colors" disabled={selectableIds.length === 0}>
+                                            {allSelected ? <CheckSquare size={18} className="text-indigo-600" /> : someSelected ? <MinusSquare size={18} className="text-indigo-400" /> : <Square size={18} />}
+                                        </button>
+                                    </th>
+                                    <th className="p-4">No</th>
+                                    <th className="p-4">Kategori</th>
+                                    <th className="p-4">Operator</th>
+                                    <th className="p-4">Regional</th>
+                                    <th className="p-4">Tahun</th>
+                                    <th className="p-4">TW</th>
                                     <th className="p-4">Periode</th>
                                     <th className="p-4">Nominal</th>
-                                    <th className="p-4">Tanggal Submit</th>
+                                    <th className="p-4">Lampiran</th>
                                     <th className="p-4 text-center">Status</th>
+                                    <th className="p-4 text-center">Kesesuaian</th>
                                     <th className="p-4 text-center">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {filteredDocs.length === 0 ? (
+                                {loading ? (
                                     <tr>
-                                        <td colSpan={7} className="p-8 text-center text-gray-500">
-                                            Belum ada dokumen yang sesuai filter.
+                                        <td colSpan={13} className="p-8 text-center">
+                                            <Loader2 className="animate-spin mx-auto text-gray-400" />
                                         </td>
                                     </tr>
-                                ) : (
-                                    filteredDocs.map((doc) => (
-                                        <tr key={doc.id} className="hover:bg-gray-50/50 transition-colors">
+                                ) : documents.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={13} className="p-8 text-center text-gray-500">
+                                            Belum ada data.
+                                        </td>
+                                    </tr>
+                                ) : documents.map((doc, idx) => {
+                                    const canSelect = doc.status_verifikasi === 'menunggu' || doc.status_verifikasi === 'gagal';
+                                    const isProcessingBatch = batchIds.includes(doc.id);
+                                    const rowNum = ((filters.page || 1) - 1) * (filters.per_page || 15) + idx + 1;
+
+                                    return (
+                                        <tr key={doc.id} className={clsx('hover:bg-gray-50/50 transition-colors', isProcessingBatch && 'bg-indigo-50/30')}>
                                             <td className="p-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600">
-                                                        <FileText size={20} />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">{doc.category}</p>
-                                                        <p className="text-xs text-gray-500">{doc.fileName}</p>
-                                                    </div>
-                                                </div>
+                                                {canSelect ? (
+                                                    <button onClick={() => toggleSelect(doc.id)} className="text-gray-400 hover:text-indigo-600 transition-colors">
+                                                        {selected.has(doc.id) ? <CheckSquare size={18} className="text-indigo-600" /> : <Square size={18} />}
+                                                    </button>
+                                                ) : (
+                                                    <Square size={18} className="text-gray-200 cursor-not-allowed" />
+                                                )}
                                             </td>
-                                            <td className="p-4">
-                                                <p className="font-medium text-gray-900">{doc.userName}</p>
-                                                <p className="text-xs text-gray-500">{doc.region} • {doc.kcu}</p>
+                                            <td className="p-4 text-sm text-gray-500">{rowNum}</td>
+                                            <td className="p-4 text-sm font-medium text-gray-900">{doc.kategori}</td>
+                                            <td className="p-4 text-sm">
+                                                <p className="font-medium text-gray-900">{doc.operator?.name || '-'}</p>
                                             </td>
-                                            <td className="p-4">
-                                                <span className="text-sm text-gray-700">Tahun {doc.year}</span>
-                                                <div className="text-xs text-gray-500">Triwulan {doc.quarter}</div>
+                                            <td className="p-4 text-sm">
+                                                <p className="text-gray-700">{doc.regional}</p>
+                                                <p className="text-xs text-gray-400">{doc.kcu} / {doc.kpc}</p>
                                             </td>
-                                            <td className="p-4 font-medium text-gray-900">
-                                                Rp {doc.nominal.toLocaleString('id-ID')}
-                                            </td>
-                                            <td className="p-4 text-sm text-gray-500">
-                                                {new Date(doc.submittedAt).toLocaleDateString('id-ID')}
-                                            </td>
+                                            <td className="p-4 text-sm">{doc.tahun}</td>
+                                            <td className="p-4 text-sm">{doc.triwulan}</td>
+                                            <td className="p-4 text-sm">{doc.periode}</td>
+                                            <td className="p-4 text-sm font-medium">Rp {doc.nominal_pelaporan.toLocaleString('id-ID')}</td>
+                                            <td className="p-4 text-sm text-indigo-600 truncate max-w-[150px]">{doc.lampiran_nama_asli}</td>
                                             <td className="p-4 text-center">
-                                                <span className={clsx(
-                                                    "px-2.5 py-1 rounded-full text-xs font-medium border",
-                                                    doc.status === 'PENDING' && "bg-yellow-50 text-yellow-700 border-yellow-200",
-                                                    doc.status === 'VERIFIED' && "bg-green-50 text-green-700 border-green-200",
-                                                    doc.status === 'REJECTED' && "bg-red-50 text-red-700 border-red-200"
-                                                )}>
-                                                    {doc.status === 'PENDING' ? 'Menunggu' : doc.status === 'VERIFIED' ? 'Verified' : 'Ditolak'}
+                                                <span className={clsx('px-2 py-1 rounded-full text-xs font-medium border', STATUS_VERIFIKASI[doc.status_verifikasi]?.color)}>
+                                                    {isProcessingBatch ? (
+                                                        <span className="flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Proses</span>
+                                                    ) : STATUS_VERIFIKASI[doc.status_verifikasi]?.label}
                                                 </span>
                                             </td>
-                                            <td className="p-4">
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <button
-                                                        onClick={() => setPreviewDoc(doc)}
-                                                        className="p-1.5 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors"
-                                                        title="Lihat Dokumen"
-                                                    >
-                                                        <Eye size={20} />
-                                                    </button>
-                                                    {doc.status === 'PENDING' && (
-                                                        <>
-                                                            <button
-                                                                onClick={() => handleAutoVerify(doc)}
-                                                                disabled={processingId === doc.id}
-                                                                className={clsx(
-                                                                    "p-1.5 rounded-lg transition-colors",
-                                                                    processingId === doc.id ? "bg-indigo-50 text-indigo-400 animate-pulse" : "hover:bg-indigo-100 text-indigo-600"
-                                                                )}
-                                                                title="Verifikasi Otomatis (OCR/NER)"
-                                                            >
-                                                                <Wand2 size={20} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleUpdateStatus(doc.id, 'VERIFIED')}
-                                                                className="p-1.5 hover:bg-green-100 text-green-600 rounded-lg transition-colors"
-                                                                title="Verifikasi"
-                                                            >
-                                                                <CheckCircle size={20} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleUpdateStatus(doc.id, 'REJECTED')}
-                                                                className="p-1.5 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
-                                                                title="Tolak"
-                                                            >
-                                                                <XCircle size={20} />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {doc.status !== 'PENDING' && (
-                                                        <span className="text-xs text-gray-400">-</span>
-                                                    )}
-                                                </div>
+                                            <td className="p-4 text-center">
+                                                <span className={clsx('px-2 py-1 rounded-full text-xs font-medium border', HASIL_KESESUAIAN[doc.hasil_kesesuaian]?.color)}>
+                                                    {HASIL_KESESUAIAN[doc.hasil_kesesuaian]?.label}
+                                                </span>
                                             </td>
-
+                                            <td className="p-4 text-center">
+                                                <button
+                                                    onClick={() => setDetailDoc(doc)}
+                                                    className="p-1.5 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors"
+                                                    title="Lihat Detail"
+                                                >
+                                                    <Eye size={18} />
+                                                </button>
+                                            </td>
                                         </tr>
-                                    ))
-                                )}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
-                </div>
 
-                {/* Document Preview Modal */}
-                {previewDoc && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPreviewDoc(null)}>
-                        <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                                <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                    <FileText size={20} className="text-indigo-600" />
-                                    Preview: {previewDoc.fileName}
-                                </h3>
-                                <button onClick={() => setPreviewDoc(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                                    <X size={24} className="text-gray-500" />
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                            <p className="text-sm text-gray-500">
+                                Menampilkan {documents.length} dari {totalItems} data
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handlePageChange((filters.page || 1) - 1)}
+                                    disabled={(filters.page || 1) <= 1}
+                                    className="p-2 hover:bg-gray-100 disabled:opacity-30 rounded-lg transition-colors"
+                                >
+                                    <ChevronLeft size={18} />
+                                </button>
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .filter(p => Math.abs(p - (filters.page || 1)) <= 2 || p === 1 || p === totalPages)
+                                    .map((p, idx, arr) => (
+                                        <React.Fragment key={p}>
+                                            {idx > 0 && arr[idx - 1] !== p - 1 && (
+                                                <span className="text-gray-300">...</span>
+                                            )}
+                                            <button
+                                                onClick={() => handlePageChange(p)}
+                                                className={clsx(
+                                                    'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
+                                                    p === (filters.page || 1)
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : 'hover:bg-gray-100 text-gray-600'
+                                                )}
+                                            >
+                                                {p}
+                                            </button>
+                                        </React.Fragment>
+                                    ))}
+                                <button
+                                    onClick={() => handlePageChange((filters.page || 1) + 1)}
+                                    disabled={(filters.page || 1) >= totalPages}
+                                    className="p-2 hover:bg-gray-100 disabled:opacity-30 rounded-lg transition-colors"
+                                >
+                                    <ChevronRight size={18} />
                                 </button>
                             </div>
-                            <div className="flex-1 overflow-auto p-4 bg-gray-100 flex items-center justify-center">
-                                {previewDoc.fileData ? (
-                                    previewDoc.fileData.startsWith('data:image') ? (
-                                        <img src={previewDoc.fileData} alt="Preview" className="max-w-full max-h-full rounded-lg shadow-sm" />
-                                    ) : (
-                                        <div className="text-center p-10">
-                                            <FileText size={64} className="mx-auto text-gray-300 mb-4" />
-                                            <p className="text-gray-500">Preview file PDF belum didukung langsung.</p>
-                                            <a href={previewDoc.fileData} download={previewDoc.fileName} className="text-indigo-600 hover:underline mt-2 inline-block">
-                                                Download File
-                                            </a>
-                                        </div>
-                                    )
-                                ) : (
-                                    <div className="text-center text-gray-400">
-                                        <p>File tidak dapat ditampilkan.</p>
-                                    </div>
-                                )}
-                            </div>
-                            {previewDoc.status === 'PENDING' && (
-                                <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-                                    <button
-                                        onClick={() => { handleAutoVerify(previewDoc); setPreviewDoc(null); }}
-                                        className="px-4 py-2 bg-indigo-100 text-indigo-700 font-semibold rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-2"
-                                    >
-                                        <Wand2 size={18} /> Auto Verify
-                                    </button>
-                                    <button
-                                        onClick={() => { handleUpdateStatus(previewDoc.id, 'REJECTED'); setPreviewDoc(null); }}
-                                        className="px-4 py-2 bg-white border border-red-200 text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors"
-                                    >
-                                        Tolak
-                                    </button>
-                                    <button
-                                        onClick={() => { handleUpdateStatus(previewDoc.id, 'VERIFIED'); setPreviewDoc(null); }}
-                                        className="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
-                                    >
-                                        Verifikasi
-                                    </button>
-                                </div>
-                            )}
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </main>
+
+            {/* Detail Modal */}
+            {detailDoc && (
+                <DetailModal doc={detailDoc} onClose={handleDetailClose} />
+            )}
         </div>
     );
 };

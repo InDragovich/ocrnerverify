@@ -2,10 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { LoginPage } from './pages/LoginPage';
 import { InputDashboard } from './pages/InputDashboard';
 import { VerifierDashboard } from './pages/VerifierDashboard';
-
-// Placeholder components until standard ones are created to avoid build errors
-// const PlaceholderInput = () => <div className="p-10">Input Dashboard Coming Soon</div>;
-// const PlaceholderVerify = () => <div className="p-10">Verifier Dashboard Coming Soon</div>;
+import { DashboardPage } from './pages/DashboardPage';
+import { AdminUsersPage } from './pages/AdminUsersPage';
 
 function App() {
   return (
@@ -14,6 +12,8 @@ function App() {
         <Route path="/" element={<LoginPage />} />
         <Route path="/input" element={<InputDashboard />} />
         <Route path="/verify" element={<VerifierDashboard />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

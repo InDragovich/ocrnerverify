@@ -1,79 +1,205 @@
-# Project TA
+# SIM-LPU — Sistem Verifikasi Biaya Rutin
 
-Web Application ini dibangun menggunakan **React**, **Vite**, dan **Tailwind CSS**. 
+Web application untuk verifikasi dokumen laporan subsidi operasional (biaya rutin) dengan integrasi OCR dan NER.
 
-Berikut adalah panduan langkah demi langkah untuk menjalankan proyek ini di komputer Anda, dimulai dari persiapan lingkungan hingga menjalankan aplikasi.
-
-## 📋 Prasyarat
-
-Sebelum memulai, pastikan komputer Anda telah terinstal perangkat lunak berikut:
-
-1.  **Node.js & npm** (Runtime JavaScript dan Package Manager)
-    *   Unduh dan instal versi terbaru (LTS direkomendasikan) dari [nodejs.org](https://nodejs.org/).
-    *   Untuk memverifikasi instalasi, buka terminal (Command Prompt/PowerShell) dan jalankan:
-        ```bash
-        node -v
-        npm -v
-        ```
-2.  **Git** (Version Control System)
-    *   Unduh dan instal dari [git-scm.com](https://git-scm.com/).
-    *   Untuk memverifikasi, jalankan:
-        ```bash
-        git --version
-        ```
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
+- **Backend**: Laravel 11 + Sanctum + Queue
+- **Database**: SQLite (development) / MySQL (production)
 
 ---
 
-## 🚀 Cara Menjalankan Project
+## Changelog
 
-Ikuti langkah-langkah berikut untuk mengunduh dan menjalankan aplikasi di komputer lokal Anda:
+### v1.0.0 — Initial Frontend (2025-02-05)
+- Setup project React + Vite + Tailwind CSS
+- Halaman Login, Input Operator, Verifier Dashboard (tampilan awal)
+- Komponen Header
+- README awal dengan panduan setup
+
+### v1.1.0 — Full-Stack Integration (2025-02-08)
+**Frontend (modifikasi):**
+- Integrasi autentikasi via Laravel Sanctum (Bearer token)
+- Service layer: `api.ts`, `authService.ts`, `verifikasiService.ts`, `userService.ts`
+- Halaman baru: `DashboardPage` (statistik), `AdminUsersPage` (kelola user)
+- Komponen baru: `DetailModal` (detail data + hasil OCR/NER + keputusan manual)
+- Data constants: kategori, bulan, warna status
+- Update `LoginPage`: navigasi berdasarkan role
+- Update `InputDashboard`: form input + CRUD data operator + upload lampiran
+- Update `VerifierDashboard`: filter, batch verifikasi otomatis, progress bar, polling
+- Update `Header`: badge role, navigasi per role
+- Update `App.tsx`: routing lengkap dengan role-based access
+
+**Backend (baru):**
+- Laravel 11 project dengan Sanctum authentication
+- 3 Model: `User`, `VerifikasiBiayaRutin`, `AuditLog`
+- 5 Controller: `AuthController`, `VerifikasiController`, `BatchVerifikasiController`, `MockOcrNerController`, `Admin/UserController`
+- 5 Form Request: validasi input terstruktur
+- 1 Middleware: `EnsureRole` (role-based access control)
+- 1 Queue Job: `ProcessVerifikasiJob` (OCR-NER + matching otomatis)
+- 3 Service: `OcrNerService`, `MatchingService`, `AuditService`
+- Mock OCR-NER API untuk prototype (70% sukses, 20% partial, 10% gagal)
+- Database migration: users, verifikasi_biaya_rutin, audit_logs, jobs, cache, personal_access_tokens
+- Seeder: 6 user demo + 5 data verifikasi sample
+- Queue berbasis database dengan retry 3x dan timeout 120 detik
+- Audit trail: login, logout, CRUD, verifikasi otomatis/manual
+
+---
+
+## Prasyarat
+
+1. **Node.js >= 18** + npm — [nodejs.org](https://nodejs.org/)
+2. **PHP >= 8.2** + Composer — [getcomposer.org](https://getcomposer.org/)
+3. **Git** — [git-scm.com](https://git-scm.com/)
+4. **SQLite** (sudah built-in di PHP)
+
+---
+
+## Cara Menjalankan (Lokal)
 
 ### 1. Clone Repository
-Salin kode sumber proyek ke komputer Anda. Buka terminal atau Command Prompt di folder tujuan yang Anda inginkan, lalu jalankan:
 
 ```bash
-git clone <URL_REPOSITORY_ANDA>
-cd project-ta
+git clone https://github.com/InDragovich/SIM-LPU.git
+cd SIM-LPU
 ```
-*(Ganti `<URL_REPOSITORY_ANDA>` dengan URL repository GitHub yang sebenarnya)*
 
-### 2. Install Dependencies
-Masuk ke direktori proyek (jika belum) dan instal semua pustaka yang dibutuhkan menggunakan npm:
+### 2. Setup Backend (Laravel)
 
 ```bash
+cd backend
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+```
+
+### 3. Jalankan Backend
+
+```bash
+# Terminal 1 — Laravel server
+cd backend
+php artisan serve
+
+# Terminal 2 — Queue worker (wajib untuk batch verifikasi)
+cd backend
+php artisan queue:listen --tries=1
+```
+
+### 4. Setup & Jalankan Frontend
+
+```bash
+# Terminal 3 — di root project
 npm install
-```
-
-### 3. Jalankan Aplikasi (Development Mode)
-Untuk memulai server pengembangan lokal:
-
-```bash
 npm run dev
 ```
 
-Setelah perintah dijalankan, terminal akan menampilkan alamat lokal (biasanya `http://localhost:5173/`). Buka alamat tersebut di browser web Anda untuk melihat aplikasi.
+### 5. Buka Aplikasi
+
+Akses `http://localhost:5173` di browser.
+
+### Akun Demo
+
+| Username | Password | Role | Region |
+|----------|----------|------|--------|
+| `input_medan` | `password` | Operator | I. MEDAN |
+| `input_jkt` | `password` | Operator | Jakarta |
+| `input_sby` | `password` | Operator | Surabaya |
+| `input_mks` | `password` | Operator | Makassar |
+| `verificator` | `password` | Verifikator | — |
+| `superadmin` | `password` | Super Admin | — |
 
 ---
 
-## 🛠️ Script yang Tersedia
+## Script yang Tersedia
 
-Dalam direktori proyek, Anda dapat menjalankan perintah berikut:
+**Frontend:**
+- `npm run dev` — Development server (port 5173)
+- `npm run build` — Build produksi ke folder `dist`
+- `npm run preview` — Preview hasil build
+- `npm run lint` — Lint kode dengan ESLint
 
-- **`npm run dev`**: Menjalankan aplikasi dalam mode pengembangan. Halaman akan dimuat ulang secara otomatis jika Anda mengedit file.
-- **`npm run build`**: Membuild aplikasi untuk produksi ke folder `dist`.
-- **`npm run preview`**: Menjalankan preview dari hasil build produksi secara lokal.
-- **`npm run lint`**: Memeriksa kode untuk menemukan potensi error menggunakan ESLint.
-
-## 📁 Struktur Project
-
-Web app ini menggunakan struktur folder Vite + React standard:
-
-- `src/`: Berisi kode sumber utama (Komponen, Halaman, Logika).
-- `public/`: Aset statis yang tidak diproses oleh Vite.
-- `index.html`: Titik masuk aplikasi.
-- `vite.config.ts`: Konfigurasi Vite.
-- `tailwind.config.js` (atau terintegrasi di CSS): Konfigurasi Tailwind CSS.
+**Backend:**
+- `php artisan serve` — Laravel server (port 8000)
+- `php artisan queue:listen` — Queue worker untuk batch processing
+- `php artisan migrate --seed` — Jalankan migrasi + data demo
 
 ---
 
-Dibuat dengan ❤️ menggunakan [Vite](https://vitejs.dev/) & [React](https://react.dev/).
+## Struktur Project
+
+```
+SIM-LPU/
+├── src/                              # Frontend React + TypeScript
+│   ├── App.tsx                       # Router utama
+│   ├── main.tsx                      # Entry point
+│   ├── components/
+│   │   ├── Header.tsx                # Navbar global
+│   │   └── DetailModal.tsx           # Modal detail + keputusan
+│   ├── pages/
+│   │   ├── LoginPage.tsx             # Halaman login
+│   │   ├── DashboardPage.tsx         # Dashboard statistik
+│   │   ├── InputDashboard.tsx        # Form input operator
+│   │   ├── VerifierDashboard.tsx     # Tabel verifikasi + batch
+│   │   └── AdminUsersPage.tsx        # Kelola user (super admin)
+│   ├── services/
+│   │   ├── api.ts                    # Axios HTTP client
+│   │   ├── authService.ts            # Login/logout
+│   │   ├── verifikasiService.ts      # CRUD verifikasi + batch
+│   │   └── userService.ts            # CRUD user admin
+│   ├── data/
+│   │   └── constants.ts              # Kategori, bulan, warna status
+│   └── utils/
+│       └── storage.ts                # Helper localStorage
+│
+├── backend/                          # Backend Laravel 11
+│   ├── app/
+│   │   ├── Http/
+│   │   │   ├── Controllers/
+│   │   │   │   ├── AuthController.php
+│   │   │   │   ├── VerifikasiController.php
+│   │   │   │   ├── BatchVerifikasiController.php
+│   │   │   │   ├── MockOcrNerController.php
+│   │   │   │   └── Admin/UserController.php
+│   │   │   ├── Middleware/
+│   │   │   │   └── EnsureRole.php
+│   │   │   └── Requests/              # 5 Form Request validasi
+│   │   ├── Jobs/
+│   │   │   └── ProcessVerifikasiJob.php
+│   │   ├── Models/
+│   │   │   ├── User.php
+│   │   │   ├── VerifikasiBiayaRutin.php
+│   │   │   └── AuditLog.php
+│   │   └── Services/
+│   │       ├── OcrNerService.php      # Integrasi API OCR-NER
+│   │       ├── MatchingService.php    # Pencocokan data
+│   │       └── AuditService.php       # Audit trail
+│   ├── config/
+│   │   └── ocr_ner.php               # Konfigurasi API OCR-NER
+│   ├── database/
+│   │   ├── migrations/                # 6 migration files
+│   │   └── seeders/                   # User + data demo
+│   └── routes/
+│       └── api.php                    # 15+ API endpoints
+│
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+└── README.md
+```
+
+---
+
+## Konfigurasi Environment
+
+**Frontend** (`.env` di root):
+```
+VITE_API_BASE_URL=http://localhost:8000/api
+```
+
+**Backend** (`.env` di `backend/`):
+```
+OCR_NER_API_URL=http://localhost:8000/api/mock/ocr-ner
+OCR_NER_USE_MOCK=true
+QUEUE_CONNECTION=database
+FRONTEND_URL=http://localhost:5173
+```
