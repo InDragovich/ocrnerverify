@@ -130,11 +130,20 @@ export const verifikasiService = {
         return data;
     },
 
-    async setKeputusan(id: number, hasil_kesesuaian: string, catatan_verifikator: string | null): Promise<{ message: string; data: VerifikasiItem }> {
-        const { data } = await api.put(`/verifikasi/${id}/keputusan`, {
+    async setKeputusan(
+        id: number,
+        hasil_kesesuaian: string,
+        catatan_verifikator: string | null,
+        koreksi_entitas?: Record<string, string | number | null>,
+    ): Promise<{ message: string; data: VerifikasiItem }> {
+        const payload: Record<string, unknown> = {
             hasil_kesesuaian,
             catatan_verifikator,
-        });
+        };
+        if (koreksi_entitas && Object.keys(koreksi_entitas).length > 0) {
+            payload.koreksi_entitas = koreksi_entitas;
+        }
+        const { data } = await api.put(`/verifikasi/${id}/keputusan`, payload);
         return data;
     },
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import type { User } from '../services/authService';
@@ -50,7 +50,7 @@ export const VerifierDashboard: React.FC = () => {
     const [batchProcessing, setBatchProcessing] = useState(false);
     const [batchIds, setBatchIds] = useState<number[]>([]);
     const [batchProgress, setBatchProgress] = useState({ total: 0, completed: 0, processing: 0, failed: 0 });
-    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const [batchMsg, setBatchMsg] = useState('');
 
     // detail modal
     const [detailDoc, setDetailDoc] = useState<VerifikasiItem | null>(null);
@@ -81,13 +81,6 @@ export const VerifierDashboard: React.FC = () => {
         if (user) loadDocuments();
     }, [user, loadDocuments]);
 
-    // Cleanup polling on unmount
-    useEffect(() => {
-        return () => {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-        };
-    }, []);
-
     const handleFilterChange = (key: string, value: string) => {
         setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
         setSelected(new Set());
@@ -105,7 +98,7 @@ export const VerifierDashboard: React.FC = () => {
 
     // Checkbox logic
     const selectableIds = documents
-        .filter(d => d.status_verifikasi === 'menunggu' || d.status_verifikasi === 'gagal')
+        .filter(d => d.status_verifikasi === 'menunggu' || d.status_verifikasi === 'gagal' || d.status_verifikasi === 'diproses')
         .map(d => d.id);
 
     const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
@@ -134,38 +127,44 @@ export const VerifierDashboard: React.FC = () => {
         const ids = Array.from(selected);
         setBatchProcessing(true);
         setBatchIds(ids);
+        setBatchMsg('');
         setBatchProgress({ total: ids.length, completed: 0, processing: ids.length, failed: 0 });
 
         try {
             await verifikasiService.batchVerify(ids);
 
-            // Start polling
-            pollingRef.current = setInterval(async () => {
-                try {
-                    const status = await verifikasiService.getBatchStatus(ids);
-                    setBatchProgress({
-                        total: status.total,
-                        completed: status.completed,
-                        processing: status.processing,
-                        failed: status.failed,
-                    });
+            // Jobs run synchronously on the server, so fetch final status
+            try {
+                const status = await verifikasiService.getBatchStatus(ids);
+                setBatchProgress({
+                    total: status.total,
+                    completed: status.completed,
+                    processing: status.processing,
+                    failed: status.failed,
+                });
+                const successCount = status.completed - status.failed;
+                setBatchMsg(
+                    `Verifikasi selesai: ${successCount} berhasil` +
+                    (status.failed > 0 ? `, ${status.failed} gagal` : '')
+                );
+            } catch {
+                setBatchProgress({ total: ids.length, completed: ids.length, processing: 0, failed: 0 });
+                setBatchMsg('Verifikasi selesai.');
+            }
 
-                    if (status.processing === 0) {
-                        // All done
-                        if (pollingRef.current) clearInterval(pollingRef.current);
-                        pollingRef.current = null;
-                        setBatchProcessing(false);
-                        setBatchIds([]);
-                        setSelected(new Set());
-                        loadDocuments();
-                    }
-                } catch {
-                    // ignore polling errors
-                }
-            }, 3000);
-        } catch {
             setBatchProcessing(false);
             setBatchIds([]);
+            setSelected(new Set());
+            loadDocuments();
+            setTimeout(() => setBatchMsg(''), 5000);
+        } catch (err: unknown) {
+            setBatchProcessing(false);
+            setBatchIds([]);
+            const axiosErr = err as { response?: { data?: { message?: string } } };
+            const msg = axiosErr?.response?.data?.message || (err instanceof Error ? err.message : 'Terjadi kesalahan');
+            setBatchMsg(`Gagal memproses verifikasi: ${msg}`);
+            loadDocuments(); // refresh to see current state
+            setTimeout(() => setBatchMsg(''), 8000);
         }
     };
 
@@ -221,6 +220,16 @@ export const VerifierDashboard: React.FC = () => {
                         {batchProgress.failed > 0 && (
                             <p className="text-xs text-red-600 mt-1">{batchProgress.failed} item gagal diproses.</p>
                         )}
+                    </div>
+                )}
+
+                {/* Batch Result Message */}
+                {!batchProcessing && batchMsg && (
+                    <div className={clsx(
+                        'mb-6 rounded-xl p-4 text-sm font-medium',
+                        batchMsg.includes('Gagal') ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'
+                    )}>
+                        {batchMsg}
                     </div>
                 )}
 
@@ -321,7 +330,7 @@ export const VerifierDashboard: React.FC = () => {
                                         </td>
                                     </tr>
                                 ) : filteredDocuments.map((doc, idx) => {
-                                    const canSelect = doc.status_verifikasi === 'menunggu' || doc.status_verifikasi === 'gagal';
+                                    const canSelect = doc.status_verifikasi === 'menunggu' || doc.status_verifikasi === 'gagal' || doc.status_verifikasi === 'diproses';
                                     const isProcessingBatch = batchIds.includes(doc.id);
                                     const rowNum = ((filters.page || 1) - 1) * (filters.per_page || 15) + idx + 1;
                                     const nominalColor = getNominalColor(doc);

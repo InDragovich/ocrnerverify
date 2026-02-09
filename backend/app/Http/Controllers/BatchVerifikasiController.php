@@ -21,12 +21,12 @@ class BatchVerifikasiController extends Controller
         $ids = $request->ids;
 
         $items = VerifikasiBiayaRutin::whereIn('id', $ids)
-            ->whereIn('status_verifikasi', ['menunggu', 'gagal'])
+            ->whereIn('status_verifikasi', ['menunggu', 'gagal', 'diproses'])
             ->get();
 
         if ($items->isEmpty()) {
             return response()->json([
-                'message' => 'Tidak ada data yang dapat diproses. Pastikan data berstatus "menunggu" atau "gagal".',
+                'message' => 'Tidak ada data yang dapat diproses. Pastikan data berstatus "menunggu", "gagal", atau "diproses".',
                 'total_jobs' => 0,
                 'ids' => [],
             ], 422);
@@ -39,8 +39,6 @@ class BatchVerifikasiController extends Controller
                 'status_verifikasi' => 'diproses',
                 'error_message' => null,
             ]);
-
-            ProcessVerifikasiJob::dispatch($item->id, $user->id);
             $processedIds[] = $item->id;
         }
 
@@ -52,8 +50,26 @@ class BatchVerifikasiController extends Controller
             ['ids' => $processedIds, 'total' => count($processedIds)],
         );
 
+        // Process jobs synchronously so no queue worker is needed.
+        // Wrap each job in try-catch so one failure doesn't stop the rest.
+        foreach ($processedIds as $id) {
+            try {
+                ProcessVerifikasiJob::dispatchSync($id, $user->id);
+            } catch (\Throwable $e) {
+                // Job already handles its own failures via markFailed(),
+                // but catch any unexpected exception to prevent batch abort.
+                $item = VerifikasiBiayaRutin::find($id);
+                if ($item && $item->status_verifikasi === 'diproses') {
+                    $item->update([
+                        'status_verifikasi' => 'gagal',
+                        'error_message' => 'Processing error: ' . $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         return response()->json([
-            'message' => 'Batch verifikasi dimulai.',
+            'message' => 'Batch verifikasi selesai.',
             'total_jobs' => count($processedIds),
             'ids' => $processedIds,
         ]);

@@ -195,15 +195,27 @@ class VerifikasiController extends Controller
         $oldValues = [
             'hasil_kesesuaian' => $verifikasi->hasil_kesesuaian,
             'catatan_verifikator' => $verifikasi->catatan_verifikator,
+            'hasil_entitas' => $verifikasi->hasil_entitas,
         ];
 
-        $verifikasi->update([
+        $updateData = [
             'hasil_kesesuaian' => $request->hasil_kesesuaian,
             'catatan_verifikator' => $request->catatan_verifikator,
             'verifikator_id' => $user->id,
             'verified_at' => now(),
             'status_verifikasi' => 'selesai',
-        ]);
+        ];
+
+        // Apply entity corrections from verifier (e.g. corrected nominal)
+        if ($request->filled('koreksi_entitas')) {
+            $entitas = $verifikasi->hasil_entitas ?? [];
+            foreach ($request->koreksi_entitas as $key => $value) {
+                $entitas[$key] = (string)$value;
+            }
+            $updateData['hasil_entitas'] = $entitas;
+        }
+
+        $verifikasi->update($updateData);
 
         AuditService::log(
             'manual_verify',
@@ -213,6 +225,7 @@ class VerifikasiController extends Controller
             [
                 'hasil_kesesuaian' => $request->hasil_kesesuaian,
                 'catatan_verifikator' => $request->catatan_verifikator,
+                'koreksi_entitas' => $request->koreksi_entitas,
             ],
         );
 
