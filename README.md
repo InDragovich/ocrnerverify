@@ -3,7 +3,7 @@
 Web application untuk verifikasi dokumen laporan subsidi operasional (biaya rutin) dengan integrasi OCR dan NER.
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4
-- **Backend**: Laravel 11 + Sanctum + Queue (database)
+- **Backend**: Laravel 11 + Sanctum
 - **Database**: SQLite (development) / MySQL (production)
 
 ---
@@ -69,6 +69,30 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 - Fallback "Buka di tab baru" untuk format yang tidak didukung
 - Dependensi baru: `docx-preview`, `xlsx` (SheetJS)
 - Styling docx-preview dan tabel XLSX di `index.css`
+
+### v1.3.0 — Fix Verifikasi Otomatis, Keputusan Manual & Koreksi Nominal (2025-02-09)
+**Bug Fix:**
+- Fix deadlock verifikasi otomatis: mock OCR sekarang diproses langsung in-process (bukan HTTP request ke server sendiri yang menyebabkan hang di Windows single-threaded dev server)
+- Fix batch verify: `dispatchSync` dengan try-catch per job, sehingga 1 item gagal tidak menghentikan seluruh batch
+- Fix data seeder tidak bisa diverifikasi karena file lampiran tidak ada di storage — mock mode sekarang skip pengecekan file
+- Fix item stuck di status "diproses": sekarang bisa di-select dan di-proses ulang
+- Fix keputusan manual tidak bereaksi: error message sekarang ditampilkan dari response backend
+- Tambah teks "Proses..." di kolom Verifikasi saat batch berjalan
+
+**Fitur Baru:**
+- Koreksi nominal OCR: verifikator dapat mengedit nominal hasil OCR/NER di tab Keputusan sebelum menyimpan keputusan (via field `koreksi_entitas`)
+- Ringkasan perbandingan nominal (Pelaporan vs OCR) ditampilkan di tab Keputusan dengan indikator cocok/tidak cocok
+- Pesan sukses/error ditampilkan setelah batch verifikasi selesai
+
+**Peningkatan Mock OCR:**
+- Nominal: 70% cocok persis, 20% selisih kecil (±1-10%), 10% beda total
+- Kategori: selalu cocok dengan data input
+- Periode: 80% cocok, 20% bulan berbeda
+
+**Perubahan Arsitektur:**
+- Queue worker (`php artisan queue:listen`) **tidak diperlukan lagi** — batch verifikasi diproses secara sinkron dalam request
+- Mock OCR logic dipindah dari `MockOcrNerController` (HTTP) ke `OcrNerService` (in-process) saat `OCR_NER_USE_MOCK=true`
+- Polling interval dihapus dari frontend (hasil langsung dikembalikan setelah proses selesai)
 
 ---
 
@@ -163,8 +187,6 @@ php artisan migrate --seed
 
 #### 5. Jalankan Backend
 
-**Anda butuh 2 terminal terpisah untuk backend!**
-
 **Terminal 1 — Laravel Server:**
 ```powershell
 # Jangan lupa set PATH dulu jika terminal baru
@@ -175,19 +197,11 @@ php artisan serve
 # Server berjalan di http://localhost:8000
 ```
 
-**Terminal 2 — Queue Worker (WAJIB untuk batch verifikasi):**
-```powershell
-# Jangan lupa set PATH dulu jika terminal baru
-$env:PATH = "C:\laragon\bin\php\php-8.2.22-Win32-vs16-x64;" + $env:PATH
-
-cd backend
-php artisan queue:listen --tries=1
-# Terminal ini harus tetap terbuka selama menggunakan fitur verifikasi otomatis
-```
+> **Catatan:** Sejak v1.3.0, Queue Worker **tidak diperlukan lagi**. Batch verifikasi diproses secara sinkron dalam request.
 
 #### 6. Setup & Jalankan Frontend
 
-**Terminal 3 — React Dev Server:**
+**Terminal 2 — React Dev Server:**
 ```bash
 # Di root folder project (bukan di folder backend)
 cd SIM-LPU
@@ -260,10 +274,7 @@ php artisan migrate --seed
 # Jalankan backend (Terminal 1)
 php artisan serve
 
-# Jalankan queue worker (Terminal 2 — baru)
-php artisan queue:listen --tries=1
-
-# Setup & jalankan frontend (Terminal 3 — baru, di root project)
+# Setup & jalankan frontend (Terminal 2 — baru, di root project)
 cd ..
 npm install
 npm run dev
@@ -319,12 +330,7 @@ php artisan migrate:fresh --seed
 ```
 
 ### Verifikasi otomatis tidak berjalan (stuck di "Memproses...")
-**Solusi:** Pastikan Queue Worker berjalan di terminal terpisah:
-```bash
-cd backend
-php artisan queue:listen --tries=1
-```
-Terminal ini HARUS tetap terbuka selama menggunakan fitur batch verifikasi.
+**Solusi:** Sejak v1.3.0, verifikasi otomatis berjalan secara sinkron (tidak perlu Queue Worker). Jika masih stuck, coba restart backend server (`php artisan serve`). Pastikan juga `OCR_NER_USE_MOCK=true` di `backend/.env`.
 
 ### Port 8000 sudah digunakan
 **Solusi:** Gunakan port lain:
@@ -376,7 +382,6 @@ npm install
 
 **Backend:**
 - `php artisan serve` — Laravel server (port 8000)
-- `php artisan queue:listen` — Queue worker untuk batch processing
 - `php artisan migrate --seed` — Jalankan migrasi + data demo
 - `php artisan migrate:fresh --seed` — Reset database + data demo (HATI-HATI: hapus semua data)
 
@@ -392,7 +397,8 @@ SIM-LPU/
 │   ├── main.tsx                            # Entry point
 │   ├── components/
 │   │   ├── Header.tsx                      # Navbar global + navigasi role-based
-│   │   └── DetailModal.tsx                 # Modal detail + OCR/NER + keputusan
+│   │   ├── DetailModal.tsx                 # Modal detail + OCR/NER + keputusan + koreksi nominal
+│   │   └── LampiranViewer.tsx              # Inline preview lampiran (PDF, DOCX, XLSX, gambar)
 │   ├── pages/
 │   │   ├── LoginPage.tsx                   # Halaman login
 │   │   ├── DashboardPage.tsx               # Dashboard statistik
@@ -469,12 +475,11 @@ FRONTEND_URL=http://localhost:5173
 
 ## Ringkasan Terminal yang Dibutuhkan
 
-Untuk menjalankan aplikasi secara lokal, Anda membutuhkan **3 terminal terpisah**:
+Untuk menjalankan aplikasi secara lokal, Anda membutuhkan **2 terminal terpisah**:
 
 | Terminal | Perintah | Keterangan |
 |----------|----------|------------|
 | Terminal 1 | `cd backend && php artisan serve` | Laravel API server (port 8000) |
-| Terminal 2 | `cd backend && php artisan queue:listen --tries=1` | Queue worker (wajib untuk verifikasi) |
-| Terminal 3 | `npm run dev` | React dev server (port 5173) |
+| Terminal 2 | `npm run dev` | React dev server (port 5173) |
 
 > **Penting:** Setiap terminal baru yang dibuka perlu menjalankan `$env:PATH = "LOKASI_PHP;" + $env:PATH` jika PHP belum tersedia secara global di system PATH.

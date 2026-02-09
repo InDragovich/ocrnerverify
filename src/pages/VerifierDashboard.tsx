@@ -371,7 +371,7 @@ export const VerifierDashboard: React.FC = () => {
                                             <td className={clsx('p-4 text-sm font-semibold', nominalColor)}>
                                                 {isProcessingBatch ? (
                                                     <span className="flex items-center gap-1 text-indigo-500">
-                                                        <Loader2 size={14} className="animate-spin" />
+                                                        <Loader2 size={14} className="animate-spin" /> Proses...
                                                     </span>
                                                 ) : nerNominal !== null ? (
                                                     `Rp ${nerNominal.toLocaleString('id-ID')}`
