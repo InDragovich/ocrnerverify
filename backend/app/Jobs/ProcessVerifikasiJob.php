@@ -36,16 +36,22 @@ class ProcessVerifikasiJob implements ShouldQueue
         }
 
         try {
-            // Get file path
+            $useMock = config('ocr_ner.use_mock', true);
+
+            // Get file path — only require actual file when using real API
             $filePath = Storage::disk('local')->path($verifikasi->lampiran_path);
 
-            if (!file_exists($filePath)) {
+            if (!$useMock && !file_exists($filePath)) {
                 $this->markFailed($verifikasi, 'File lampiran tidak ditemukan di storage');
                 return;
             }
 
-            // Call OCR-NER API
-            $ocrResult = $ocrNerService->extract($filePath, $verifikasi->lampiran_nama_asli);
+            // Call OCR-NER (mock runs in-process, real API sends the file)
+            $ocrResult = $ocrNerService->extract($filePath, $verifikasi->lampiran_nama_asli, [
+                'kategori' => $verifikasi->kategori,
+                'periode' => $verifikasi->periode,
+                'nominal' => $verifikasi->nominal_pelaporan,
+            ]);
 
             // Save OCR text regardless of status
             $verifikasi->hasil_ekstraksi_teks = $ocrResult['text_ocr'];

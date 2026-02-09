@@ -3,7 +3,7 @@ import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
 import { STATUS_VERIFIKASI, HASIL_KESESUAIAN } from '../data/constants';
 import { LampiranViewer } from './LampiranViewer';
-import { X, FileText, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { X, FileText, CheckCircle2, XCircle, Loader2, AlertCircle, Pencil } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DetailModalProps {
@@ -21,6 +21,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState('');
 
+    // Editable nominal correction
+    const [koreksiNominal, setKoreksiNominal] = useState<string>('');
+    const [editingNominal, setEditingNominal] = useState(false);
+
     // Refresh detail data
     useEffect(() => {
         const refreshDetail = async () => {
@@ -29,23 +33,56 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                 setDoc(fresh);
                 setKeputusan(fresh.hasil_kesesuaian || 'belum_ditentukan');
                 setCatatan(fresh.catatan_verifikator || '');
+                // Initialize koreksiNominal from OCR result
+                if (fresh.hasil_entitas?.nominal) {
+                    setKoreksiNominal(String(fresh.hasil_entitas.nominal));
+                }
             } catch {
                 // keep initial
+                if (initialDoc.hasil_entitas?.nominal) {
+                    setKoreksiNominal(String(initialDoc.hasil_entitas.nominal));
+                }
             }
         };
         refreshDetail();
     }, [initialDoc.id]);
 
+    const nerNominal = doc.hasil_entitas?.nominal ? Number(doc.hasil_entitas.nominal) : null;
+    const nominalMismatch = nerNominal !== null && doc.nominal_pelaporan !== nerNominal;
+
     const handleSaveKeputusan = async () => {
+        if (keputusan === 'belum_ditentukan') return;
         setSaving(true);
         setSaveMsg('');
         try {
-            const result = await verifikasiService.setKeputusan(doc.id, keputusan, catatan || null);
+            // Build correction payload if nominal was edited
+            const koreksi: Record<string, string | number | null> = {};
+            if (editingNominal && koreksiNominal !== '' && doc.hasil_entitas?.nominal) {
+                const correctedVal = Number(koreksiNominal.replace(/[^0-9]/g, ''));
+                if (!isNaN(correctedVal) && correctedVal !== Number(doc.hasil_entitas.nominal)) {
+                    koreksi.nominal = correctedVal;
+                }
+            }
+
+            const result = await verifikasiService.setKeputusan(
+                doc.id,
+                keputusan,
+                catatan || null,
+                Object.keys(koreksi).length > 0 ? koreksi : undefined,
+            );
             setDoc(result.data);
+            setKeputusan(result.data.hasil_kesesuaian || keputusan);
+            setCatatan(result.data.catatan_verifikator || '');
+            if (result.data.hasil_entitas?.nominal) {
+                setKoreksiNominal(String(result.data.hasil_entitas.nominal));
+            }
+            setEditingNominal(false);
             setSaveMsg('Keputusan berhasil disimpan.');
-            setTimeout(() => setSaveMsg(''), 3000);
-        } catch {
-            setSaveMsg('Gagal menyimpan keputusan.');
+            setTimeout(() => setSaveMsg(''), 4000);
+        } catch (err: unknown) {
+            const axiosErr = err as { response?: { data?: { message?: string } } };
+            const msg = axiosErr?.response?.data?.message || (err instanceof Error ? err.message : 'Terjadi kesalahan');
+            setSaveMsg(`Gagal menyimpan keputusan: ${msg}`);
         }
         setSaving(false);
     };
@@ -216,6 +253,77 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                                 </p>
                             </div>
 
+                            {/* Nominal Correction Section */}
+                            {doc.hasil_entitas && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                                    <h5 className="text-sm font-semibold text-gray-700">Ringkasan Hasil OCR/NER</h5>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-gray-500">Nominal Pelaporan:</span>
+                                            <span className="font-medium text-gray-900">Rp {doc.nominal_pelaporan.toLocaleString('id-ID')}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-gray-500">Nominal OCR/NER:</span>
+                                            {editingNominal ? (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-gray-400 text-xs">Rp</span>
+                                                    <input
+                                                        type="text"
+                                                        value={koreksiNominal}
+                                                        onChange={e => {
+                                                            // Allow only digits
+                                                            const val = e.target.value.replace(/[^0-9]/g, '');
+                                                            setKoreksiNominal(val);
+                                                        }}
+                                                        className="w-40 px-2 py-1 text-sm border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-right font-medium"
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingNominal(false);
+                                                            // Reset to original if empty
+                                                            if (koreksiNominal === '' && doc.hasil_entitas?.nominal) {
+                                                                setKoreksiNominal(String(doc.hasil_entitas.nominal));
+                                                            }
+                                                        }}
+                                                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                                    >
+                                                        Batal
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <span className={clsx(
+                                                        'font-medium',
+                                                        nominalMismatch ? 'text-red-600' : 'text-green-600'
+                                                    )}>
+                                                        {nerNominal !== null
+                                                            ? `Rp ${Number(koreksiNominal || nerNominal).toLocaleString('id-ID')}`
+                                                            : '-'
+                                                        }
+                                                    </span>
+                                                    {nominalMismatch && (
+                                                        <span className="text-xs text-red-500 font-medium">(Tidak cocok)</span>
+                                                    )}
+                                                    <button
+                                                        onClick={() => setEditingNominal(true)}
+                                                        className="p-1 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors"
+                                                        title="Koreksi nominal OCR"
+                                                    >
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {editingNominal && koreksiNominal !== '' && (
+                                            <p className="text-xs text-indigo-600 text-right">
+                                                Nominal dikoreksi menjadi: Rp {Number(koreksiNominal).toLocaleString('id-ID')}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-3">
                                 <label className="block text-sm font-semibold text-gray-700">Hasil Kesesuaian</label>
                                 <div className="flex gap-4">
@@ -294,7 +402,6 @@ const CompareRow: React.FC<{
     if (isNominal && nominalInput !== undefined && nominalNer !== null && nominalNer !== undefined) {
         match = nominalInput === nominalNer;
     } else if (!isNominal && ner) {
-        // fuzzy: use simple includes for display
         match = input.toLowerCase() === ner.toLowerCase();
     }
 

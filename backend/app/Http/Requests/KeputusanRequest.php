@@ -17,6 +17,8 @@ class KeputusanRequest extends FormRequest
         return [
             'hasil_kesesuaian' => 'required|string|in:sesuai,tidak_sesuai',
             'catatan_verifikator' => 'nullable|string|max:2000',
+            'koreksi_entitas' => 'nullable|array',
+            'koreksi_entitas.nominal' => 'nullable|numeric|min:0',
         ];
     }
 }
