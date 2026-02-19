@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'api_url' => env('OCR_NER_API_URL', 'http://localhost:8000/api/mock/ocr-ner'),
-    'use_mock' => env('OCR_NER_USE_MOCK', true),
-    'timeout' => 60,
+    'api_url' => env('OCR_NER_API_URL', 'http://localhost:5001/extract'),
+    'use_mock' => env('OCR_NER_USE_MOCK', false),
+    'timeout' => env('OCR_NER_TIMEOUT', 120),
 ];

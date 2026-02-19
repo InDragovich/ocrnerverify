@@ -23,7 +23,7 @@ class OcrNerService
             return $this->extractMock($originalName, $inputData);
         }
 
-        return $this->extractApi($filePath, $originalName);
+        return $this->extractApi($filePath, $originalName, $inputData);
     }
 
     private function extractMock(string $originalName, array $inputData): array
@@ -132,22 +132,32 @@ class OcrNerService
         return $categories[array_rand($categories)];
     }
 
-    private function extractApi(string $filePath, string $originalName): array
+    private function extractApi(string $filePath, string $originalName, array $inputData = []): array
     {
         $apiUrl = config('ocr_ner.api_url');
-        $timeout = config('ocr_ner.timeout', 60);
+        $timeout = config('ocr_ner.timeout', 120);
 
         try {
             $response = Http::timeout($timeout)
                 ->attach('file_lampiran', file_get_contents($filePath), $originalName)
-                ->post($apiUrl);
+                ->post($apiUrl, [
+                    'kategori' => $inputData['kategori'] ?? null,
+                    'periode' => $inputData['periode'] ?? null,
+                    'nominal' => $inputData['nominal'] ?? null,
+                ]);
 
             if ($response->successful()) {
                 $data = $response->json();
+                $entities = $data['entities'] ?? [];
+
                 return [
                     'success' => true,
                     'text_ocr' => $data['text_ocr'] ?? '',
-                    'entities' => $data['entities'] ?? [],
+                    'entities' => [
+                        'kategori' => $entities['kategori'] ?? null,
+                        'periode' => $entities['periode'] ?? null,
+                        'nominal' => $entities['nominal'] ?? null,
+                    ],
                     'status' => $data['status'] ?? 'failed',
                     'error_message' => $data['error_message'] ?? null,
                 ];
