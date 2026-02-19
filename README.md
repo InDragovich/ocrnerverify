@@ -94,6 +94,38 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 - Mock OCR logic dipindah dari `MockOcrNerController` (HTTP) ke `OcrNerService` (in-process) saat `OCR_NER_USE_MOCK=true`
 - Polling interval dihapus dari frontend (hasil langsung dikembalikan setelah proses selesai)
 
+### v1.4.0 — Real OCR-NER Microservice (2026-02-19)
+**Fitur Baru — FastAPI OCR-NER Microservice:**
+- Ganti mock OCR-NER dengan implementasi asli menggunakan **Tesseract OCR** dan **IndoBERT NER**
+- Microservice terpisah di `ocr-ner-service/` (FastAPI, port 5001)
+- Microservice berjalan lokal di `localhost:5001`
+
+**OCR Pipeline (Tesseract):**
+- Konversi PDF → gambar (pdf2image, DPI 300)
+- Preprocessing: orientation/skew correction, grayscale, adaptive noise removal
+- Ekstraksi teks: Tesseract OCR (PSM 3, OEM 3, bahasa Indonesia + English)
+- Post-processing: garbage line removal
+
+**NER Pipeline (IndoBERT):**
+- Model: `cahya/bert-base-indonesian-NER` (HuggingFace)
+- Ekstraksi entitas: ORG → kategori, DAT → periode, MON → nominal
+- Preprocessing: reorder nominal lines ke atas untuk akurasi MON
+- Similarity scoring nominal terhadap input user
+- Support GPU (CUDA) untuk inferensi cepat
+
+**Perubahan Backend:**
+- `OcrNerService.php`: forward user input (kategori, periode, nominal) ke FastAPI
+- `config/ocr_ner.php`: default URL ke `localhost:5001/extract`, timeout 120s
+- `.env`: `OCR_NER_USE_MOCK=false`, `OCR_NER_API_URL=http://localhost:5001/extract`
+
+**File Baru:**
+- `ocr-ner-service/main.py` — FastAPI endpoint `POST /extract`
+- `ocr-ner-service/ocr/preprocessor.py` — Image preprocessing pipeline
+- `ocr-ner-service/ocr/extractor.py` — Tesseract OCR extraction
+- `ocr-ner-service/ner/model.py` — Singleton IndoBERT model loader
+- `ocr-ner-service/ner/extractor.py` — NER entity extraction & verification
+- `ocr-ner-service/start.bat` — Windows startup script
+
 ---
 
 ## Prasyarat
@@ -105,6 +137,11 @@ Sebelum menjalankan aplikasi, pastikan software berikut sudah terinstall:
 3. **Composer** — [https://getcomposer.org/](https://getcomposer.org/)
 4. **Git** — [https://git-scm.com/](https://git-scm.com/)
 5. **SQLite** — Sudah built-in di PHP (pastikan extension `pdo_sqlite` aktif)
+6. **Python >= 3.10** — [https://www.python.org/](https://www.python.org/) (untuk OCR-NER service)
+7. **Tesseract OCR** — [https://github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) (dengan bahasa Indonesia)
+8. **Poppler** — [https://github.com/osadl/poppler](https://github.com/osadl/poppler) (untuk konversi PDF)
+
+> **Catatan:** Prasyarat 6-8 diperlukan untuk OCR-NER service. Jika hanya ingin testing dengan mock, cukup prasyarat 1-5.
 
 ---
 
@@ -199,7 +236,27 @@ php artisan serve
 
 > **Catatan:** Sejak v1.3.0, Queue Worker **tidak diperlukan lagi**. Batch verifikasi diproses secara sinkron dalam request.
 
-#### 6. Setup & Jalankan Frontend
+#### 6. Setup & Jalankan OCR-NER Service
+
+Sejak v1.4.0, verifikasi otomatis menggunakan OCR-NER asli (bukan mock).
+
+Buka **Terminal 3**:
+```bash
+cd ocr-ner-service
+start.bat
+# Service berjalan di http://localhost:5001
+# Pertama kali: download model IndoBERT ~443MB
+```
+
+Pastikan `.env` di `backend/` sudah diset:
+```
+OCR_NER_API_URL=http://localhost:5001/extract
+OCR_NER_USE_MOCK=false
+```
+
+> **Catatan:** Jika ingin testing tanpa OCR-NER, set `OCR_NER_USE_MOCK=true` di `backend/.env`.
+
+#### 7. Setup & Jalankan Frontend
 
 **Terminal 2 — React Dev Server:**
 ```bash
@@ -210,7 +267,7 @@ npm run dev
 # Frontend berjalan di http://localhost:5173
 ```
 
-#### 7. Buka Aplikasi
+#### 8. Buka Aplikasi
 
 Buka browser dan akses: **http://localhost:5173**
 
@@ -330,7 +387,10 @@ php artisan migrate:fresh --seed
 ```
 
 ### Verifikasi otomatis tidak berjalan (stuck di "Memproses...")
-**Solusi:** Sejak v1.3.0, verifikasi otomatis berjalan secara sinkron (tidak perlu Queue Worker). Jika masih stuck, coba restart backend server (`php artisan serve`). Pastikan juga `OCR_NER_USE_MOCK=true` di `backend/.env`.
+**Solusi:** Pastikan OCR-NER service berjalan (cek `http://localhost:5001/health`). Jika ingin testing tanpa OCR-NER, set `OCR_NER_USE_MOCK=true` di `backend/.env`. Jika masih stuck, restart backend server (`php artisan serve`).
+
+### OCR-NER service error "Model not loaded"
+**Solusi:** Pastikan `start.bat` berhasil download model IndoBERT (~443MB). Cek koneksi internet dan pastikan `torch` terinstall dengan CUDA support (`pip install torch --index-url https://download.pytorch.org/whl/cu121`).
 
 ### Port 8000 sudah digunakan
 **Solusi:** Gunakan port lain:
