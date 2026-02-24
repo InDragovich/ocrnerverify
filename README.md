@@ -126,6 +126,21 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 - `ocr-ner-service/ner/extractor.py` — NER entity extraction & verification
 - `ocr-ner-service/start.bat` — Windows startup script
 
+### v1.5.0 — Fix Periode Matching, Auto-Sync Triwulan, Koreksi Entitas Verifier (2026-02-24)
+**Bug Fix:**
+- Fix periode matching OCR/NER: format data input sekarang "Bulan Tahun" (gabungan `periode` + `tahun`) agar cocok dengan hasil NER (sebelumnya input hanya "Oktober" vs NER "Oktober 2025" → selalu tidak cocok)
+
+**Fitur Baru:**
+- Auto-sync Periode → Triwulan di form operator: pilih bulan otomatis mengisi triwulan (Jan-Mar → TW1, Apr-Jun → TW2, Jul-Sep → TW3, Okt-Des → TW4). Triwulan di-disable untuk mencegah inkonsistensi input
+- Verifier dapat mengoreksi **kategori** dan **periode** hasil OCR/NER via dropdown di tab Keputusan (sebelumnya hanya nominal yang bisa dikoreksi)
+
+**Perubahan Teknis:**
+- `constants.ts`: tambah helper `getTriwulan(month)` — hitung triwulan dari index bulan
+- `InputDashboard.tsx`: posisi Periode dan Triwulan di-swap, triwulan auto-calculated & disabled
+- `DetailModal.tsx`: tambah editable dropdown Kategori OCR/NER dan Periode OCR/NER di Ringkasan Hasil
+- `ProcessVerifikasiJob.php`: gabung `periode + tahun` saat kirim ke matching service
+- `KeputusanRequest.php`: tambah validasi `koreksi_entitas.kategori` dan `koreksi_entitas.periode`
+
 ---
 
 ## Prasyarat
@@ -457,7 +472,7 @@ SIM-LPU/
 │   ├── main.tsx                            # Entry point
 │   ├── components/
 │   │   ├── Header.tsx                      # Navbar global + navigasi role-based
-│   │   ├── DetailModal.tsx                 # Modal detail + OCR/NER + keputusan + koreksi nominal
+│   │   ├── DetailModal.tsx                 # Modal detail + OCR/NER + keputusan + koreksi entitas
 │   │   └── LampiranViewer.tsx              # Inline preview lampiran (PDF, DOCX, XLSX, gambar)
 │   ├── pages/
 │   │   ├── LoginPage.tsx                   # Halaman login
@@ -472,7 +487,7 @@ SIM-LPU/
 │   │   ├── verifikasiService.ts            # CRUD verifikasi + batch
 │   │   └── userService.ts                  # CRUD user admin
 │   ├── data/
-│   │   └── constants.ts                    # Nama rekening, bulan, warna status
+│   │   └── constants.ts                    # Nama rekening, bulan, warna status, getTriwulan()
 │   └── utils/
 │       └── storage.ts                      # Helper localStorage
 │
@@ -535,11 +550,12 @@ FRONTEND_URL=http://localhost:5173
 
 ## Ringkasan Terminal yang Dibutuhkan
 
-Untuk menjalankan aplikasi secara lokal, Anda membutuhkan **2 terminal terpisah**:
+Untuk menjalankan aplikasi secara lokal, Anda membutuhkan **2-3 terminal terpisah**:
 
 | Terminal | Perintah | Keterangan |
 |----------|----------|------------|
 | Terminal 1 | `cd backend && php artisan serve` | Laravel API server (port 8000) |
 | Terminal 2 | `npm run dev` | React dev server (port 5173) |
+| Terminal 3 | `cd ocr-ner-service && start.bat` | OCR-NER service (port 5001, opsional jika mock) |
 
 > **Penting:** Setiap terminal baru yang dibuka perlu menjalankan `$env:PATH = "LOKASI_PHP;" + $env:PATH` jika PHP belum tersedia secara global di system PATH.
