@@ -67,7 +67,7 @@ class ProcessVerifikasiJob implements ShouldQueue
             // Perform matching
             $inputData = [
                 'kategori' => $verifikasi->kategori,
-                'periode' => $verifikasi->periode,
+                'periode' => $verifikasi->periode . ' ' . $verifikasi->tahun,
                 'nominal_pelaporan' => $verifikasi->nominal_pelaporan,
             ];
 

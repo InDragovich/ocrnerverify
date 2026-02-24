@@ -18,5 +18,11 @@ export const HASIL_KESESUAIAN = {
     belum_ditentukan: { label: 'Belum Ditentukan', color: 'bg-gray-50 text-gray-500 border-gray-200' },
 } as const;
 
+export const getTriwulan = (month: string): number => {
+    const idx = MONTHS.indexOf(month);
+    if (idx === -1) return 1;
+    return Math.floor(idx / 3) + 1;
+};
+
 export type StatusVerifikasi = keyof typeof STATUS_VERIFIKASI;
 export type HasilKesesuaian = keyof typeof HASIL_KESESUAIAN;

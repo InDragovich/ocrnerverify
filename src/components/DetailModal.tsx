@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
-import { STATUS_VERIFIKASI, HASIL_KESESUAIAN } from '../data/constants';
+import { STATUS_VERIFIKASI, HASIL_KESESUAIAN, CATEGORIES, MONTHS } from '../data/constants';
 import { LampiranViewer } from './LampiranViewer';
 import { X, FileText, CheckCircle2, XCircle, Loader2, AlertCircle, Pencil } from 'lucide-react';
 import clsx from 'clsx';
@@ -21,9 +21,13 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState('');
 
-    // Editable nominal correction
+    // Editable entity corrections
     const [koreksiNominal, setKoreksiNominal] = useState<string>('');
     const [editingNominal, setEditingNominal] = useState(false);
+    const [koreksiKategori, setKoreksiKategori] = useState<string>('');
+    const [editingKategori, setEditingKategori] = useState(false);
+    const [koreksiPeriode, setKoreksiPeriode] = useState<string>('');
+    const [editingPeriode, setEditingPeriode] = useState(false);
 
     // Refresh detail data
     useEffect(() => {
@@ -33,14 +37,26 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                 setDoc(fresh);
                 setKeputusan(fresh.hasil_kesesuaian || 'belum_ditentukan');
                 setCatatan(fresh.catatan_verifikator || '');
-                // Initialize koreksiNominal from OCR result
+                // Initialize corrections from OCR result
                 if (fresh.hasil_entitas?.nominal) {
                     setKoreksiNominal(String(fresh.hasil_entitas.nominal));
+                }
+                if (fresh.hasil_entitas?.kategori) {
+                    setKoreksiKategori(fresh.hasil_entitas.kategori);
+                }
+                if (fresh.hasil_entitas?.periode) {
+                    setKoreksiPeriode(fresh.hasil_entitas.periode);
                 }
             } catch {
                 // keep initial
                 if (initialDoc.hasil_entitas?.nominal) {
                     setKoreksiNominal(String(initialDoc.hasil_entitas.nominal));
+                }
+                if (initialDoc.hasil_entitas?.kategori) {
+                    setKoreksiKategori(initialDoc.hasil_entitas.kategori);
+                }
+                if (initialDoc.hasil_entitas?.periode) {
+                    setKoreksiPeriode(initialDoc.hasil_entitas.periode);
                 }
             }
         };
@@ -55,13 +71,19 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
         setSaving(true);
         setSaveMsg('');
         try {
-            // Build correction payload if nominal was edited
+            // Build correction payload for edited fields
             const koreksi: Record<string, string | number | null> = {};
             if (editingNominal && koreksiNominal !== '' && doc.hasil_entitas?.nominal) {
                 const correctedVal = Number(koreksiNominal.replace(/[^0-9]/g, ''));
                 if (!isNaN(correctedVal) && correctedVal !== Number(doc.hasil_entitas.nominal)) {
                     koreksi.nominal = correctedVal;
                 }
+            }
+            if (koreksiKategori && koreksiKategori !== (doc.hasil_entitas?.kategori || '')) {
+                koreksi.kategori = koreksiKategori;
+            }
+            if (koreksiPeriode && koreksiPeriode !== (doc.hasil_entitas?.periode || '')) {
+                koreksi.periode = koreksiPeriode;
             }
 
             const result = await verifikasiService.setKeputusan(
@@ -76,7 +98,15 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
             if (result.data.hasil_entitas?.nominal) {
                 setKoreksiNominal(String(result.data.hasil_entitas.nominal));
             }
+            if (result.data.hasil_entitas?.kategori) {
+                setKoreksiKategori(result.data.hasil_entitas.kategori);
+            }
+            if (result.data.hasil_entitas?.periode) {
+                setKoreksiPeriode(result.data.hasil_entitas.periode);
+            }
             setEditingNominal(false);
+            setEditingKategori(false);
+            setEditingPeriode(false);
             setSaveMsg('Keputusan berhasil disimpan.');
             setTimeout(() => setSaveMsg(''), 4000);
         } catch (err: unknown) {
@@ -258,6 +288,93 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
                                     <h5 className="text-sm font-semibold text-gray-700">Ringkasan Hasil OCR/NER</h5>
                                     <div className="space-y-2 text-sm">
+                                        {/* Kategori */}
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-gray-500">Kategori OCR/NER:</span>
+                                            {editingKategori ? (
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        value={koreksiKategori}
+                                                        onChange={e => setKoreksiKategori(e.target.value)}
+                                                        className="px-2 py-1 text-sm border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        autoFocus
+                                                    >
+                                                        <option value="">-- Pilih --</option>
+                                                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingKategori(false);
+                                                            if (!koreksiKategori && doc.hasil_entitas?.kategori) {
+                                                                setKoreksiKategori(doc.hasil_entitas.kategori);
+                                                            }
+                                                        }}
+                                                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                                    >Batal</button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <span className={clsx(
+                                                        'font-medium',
+                                                        doc.hasil_entitas?.kategori && doc.kategori.toLowerCase() === doc.hasil_entitas.kategori.toLowerCase()
+                                                            ? 'text-green-600' : 'text-red-600'
+                                                    )}>
+                                                        {koreksiKategori || doc.hasil_entitas?.kategori || '-'}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setEditingKategori(true)}
+                                                        className="p-1 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors"
+                                                        title="Koreksi kategori"
+                                                    >
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Periode */}
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-gray-500">Periode OCR/NER:</span>
+                                            {editingPeriode ? (
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        value={koreksiPeriode}
+                                                        onChange={e => setKoreksiPeriode(e.target.value)}
+                                                        className="px-2 py-1 text-sm border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        autoFocus
+                                                    >
+                                                        <option value="">-- Pilih --</option>
+                                                        {MONTHS.map(m => <option key={m} value={`${m} ${doc.tahun}`}>{m} {doc.tahun}</option>)}
+                                                    </select>
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingPeriode(false);
+                                                            if (!koreksiPeriode && doc.hasil_entitas?.periode) {
+                                                                setKoreksiPeriode(doc.hasil_entitas.periode);
+                                                            }
+                                                        }}
+                                                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                                    >Batal</button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <span className={clsx(
+                                                        'font-medium',
+                                                        doc.hasil_entitas?.periode && `${doc.periode} ${doc.tahun}`.toLowerCase() === doc.hasil_entitas.periode.toLowerCase()
+                                                            ? 'text-green-600' : 'text-red-600'
+                                                    )}>
+                                                        {koreksiPeriode || doc.hasil_entitas?.periode || '-'}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setEditingPeriode(true)}
+                                                        className="p-1 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors"
+                                                        title="Koreksi periode"
+                                                    >
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Nominal */}
                                         <div className="flex items-center justify-between">
                                             <span className="text-gray-500">Nominal Pelaporan:</span>
                                             <span className="font-medium text-gray-900">Rp {doc.nominal_pelaporan.toLocaleString('id-ID')}</span>

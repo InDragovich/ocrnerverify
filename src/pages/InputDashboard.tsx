@@ -4,7 +4,7 @@ import { authService } from '../services/authService';
 import type { User } from '../services/authService';
 import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
-import { CATEGORIES, MONTHS } from '../data/constants';
+import { CATEGORIES, MONTHS, getTriwulan } from '../data/constants';
 import { Header } from '../components/Header';
 import { FileText, Save, CheckCircle, Upload, Loader2, Trash2, Search } from 'lucide-react';
 import clsx from 'clsx';
@@ -67,7 +67,12 @@ export const InputDashboard: React.FC = () => {
     }, [user, loadDocuments]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const { name, value } = e.target;
+        if (name === 'periode') {
+            setFormData({ ...formData, periode: value, triwulan: value ? String(getTriwulan(value)) : '1' });
+        } else {
+            setFormData({ ...formData, [name]: value });
+        }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -210,18 +215,18 @@ export const InputDashboard: React.FC = () => {
                                             className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Triwulan</label>
-                                        <select name="triwulan" required value={formData.triwulan} onChange={handleChange}
-                                            className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
-                                            {[1,2,3,4].map(t => <option key={t} value={t}>Triwulan {t}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="md:col-span-2">
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Periode</label>
                                         <select name="periode" required value={formData.periode} onChange={handleChange}
                                             className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
                                             <option value="">-- Pilih Periode --</option>
                                             {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Triwulan</label>
+                                        <select name="triwulan" required value={formData.triwulan} disabled
+                                            className="w-full p-3 bg-gray-100 border border-gray-300 rounded-xl text-gray-500 cursor-not-allowed outline-none">
+                                            {[1,2,3,4].map(t => <option key={t} value={t}>Triwulan {t}</option>)}
                                         </select>
                                     </div>
                                     <div className="md:col-span-2">
