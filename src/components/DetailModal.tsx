@@ -243,7 +243,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                                                     </thead>
                                                     <tbody>
                                                         <CompareRow field="Kategori" input={doc.kategori} ner={doc.hasil_entitas.kategori} />
-                                                        <CompareRow field="Periode" input={doc.periode} ner={doc.hasil_entitas.periode} />
+                                                        <CompareRow field="Periode" input={`${doc.periode} ${doc.tahun}`} ner={doc.hasil_entitas.periode} />
                                                         <CompareRow field="Nominal" input={`Rp ${doc.nominal_pelaporan.toLocaleString('id-ID')}`} ner={doc.hasil_entitas.nominal ? `Rp ${Number(doc.hasil_entitas.nominal).toLocaleString('id-ID')}` : null} isNominal nominalInput={doc.nominal_pelaporan} nominalNer={doc.hasil_entitas.nominal ? Number(doc.hasil_entitas.nominal) : null} />
                                                     </tbody>
                                                 </table>

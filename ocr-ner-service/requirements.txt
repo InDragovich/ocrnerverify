@@ -2,12 +2,15 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 pydantic>=2.8.0
-pydantic-settings>=2.4.0
 transformers>=4.44.0
 sentencepiece>=0.2.0
 accelerate>=0.33.0
+torch
 pytesseract>=0.3.13
 pdf2image>=1.17.0
 Pillow>=10.4.0
 opencv-python>=4.10.0
 numpy>=1.26.0
+
+# GPU (CUDA) support — install torch manually instead:
+# pip install torch --index-url https://download.pytorch.org/whl/cu121

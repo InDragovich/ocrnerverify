@@ -141,6 +141,30 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 - `ProcessVerifikasiJob.php`: gabung `periode + tahun` saat kirim ke matching service
 - `KeputusanRequest.php`: tambah validasi `koreksi_entitas.kategori` dan `koreksi_entitas.periode`
 
+### v1.6.0 — Drill-Down Dashboard & OCR-NER Refactoring (2026-03-10)
+**Fitur Baru — Drill-Down Dashboard Verifier:**
+- Dashboard verifier sekarang menampilkan **hierarki drill-down 4 level**: Regional → KCU → KPC → Dokumen
+- Level 1-3 menampilkan **tabel ringkasan** (SummaryTable) dengan kolom: nama, jumlah sub-unit, total dokumen, total biaya, progress bar, dan status verifikasi
+- Klik baris untuk masuk ke level berikutnya, navigasi via **breadcrumb** untuk kembali ke level atas
+- Filter **Tahun** dan **Triwulan** bersifat global (berlaku semua level, reset ke level 1 saat diubah)
+- Filter **Kategori** dan **Status** hanya muncul di level 4 (dokumen)
+
+**Backend — Endpoint Baru:**
+- `GET /api/verifikasi/summary` — aggregate data grouped by `regional` / `kcu` / `kpc` (total_dokumen, total_biaya, selesai, menunggu, gagal, jumlah_sub)
+- Filter tambahan `regional`, `kcu`, `kpc` di endpoint list verifikasi
+
+**Bug Fix:**
+- Fix tampilan periode di tab OCR comparison: sekarang menampilkan "Bulan Tahun" (sebelumnya hanya bulan)
+
+**OCR-NER Service — Refactoring v2.0.0:**
+- Simplifikasi struktur: hapus `config.py`, `ner/model.py`, `ocr/preprocessor.py`, `schemas/`, `start.bat`
+- Model loading dan NER extraction digabung ke `ner/extractor.py` (singleton pipeline)
+- Preprocessing OCR digabung ke `ocr/extractor.py`
+- Schema response di-inline ke `main.py`
+- Config sekarang langsung via `os.environ` (tanpa pydantic settings)
+- Env var disederhanakan: hapus prefix `OCR_NER_`, semua opsional (auto-detect)
+- Jalankan service cukup dengan `python main.py` (tanpa `start.bat`)
+
 ---
 
 ## Prasyarat
@@ -258,7 +282,12 @@ Sejak v1.4.0, verifikasi otomatis menggunakan OCR-NER asli (bukan mock).
 Buka **Terminal 3**:
 ```bash
 cd ocr-ner-service
-start.bat
+
+# Install dependencies (pertama kali saja)
+pip install -r requirements.txt
+
+# Jalankan service
+python main.py
 # Service berjalan di http://localhost:5001
 # Pertama kali: download model IndoBERT ~443MB
 ```
@@ -405,7 +434,7 @@ php artisan migrate:fresh --seed
 **Solusi:** Pastikan OCR-NER service berjalan (cek `http://localhost:5001/health`). Jika ingin testing tanpa OCR-NER, set `OCR_NER_USE_MOCK=true` di `backend/.env`. Jika masih stuck, restart backend server (`php artisan serve`).
 
 ### OCR-NER service error "Model not loaded"
-**Solusi:** Pastikan `start.bat` berhasil download model IndoBERT (~443MB). Cek koneksi internet dan pastikan `torch` terinstall dengan CUDA support (`pip install torch --index-url https://download.pytorch.org/whl/cu121`).
+**Solusi:** Pastikan `python main.py` berhasil download model IndoBERT (~443MB). Cek koneksi internet dan pastikan dependencies terinstall (`pip install -r requirements.txt`). Untuk GPU support: `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
 
 ### Port 8000 sudah digunakan
 **Solusi:** Gunakan port lain:
@@ -478,13 +507,13 @@ SIM-LPU/
 │   │   ├── LoginPage.tsx                   # Halaman login
 │   │   ├── DashboardPage.tsx               # Dashboard statistik
 │   │   ├── InputDashboard.tsx              # Form input operator
-│   │   ├── VerifierDashboard.tsx           # Tabel verifikasi + batch
+│   │   ├── VerifierDashboard.tsx           # Drill-down dashboard (Regional→KCU→KPC→Dokumen)
 │   │   ├── AdminUsersPage.tsx              # Kelola user (super admin)
 │   │   └── AuditLogPage.tsx                # Riwayat aktivitas (super admin)
 │   ├── services/
 │   │   ├── api.ts                          # Axios HTTP client
 │   │   ├── authService.ts                  # Login/logout
-│   │   ├── verifikasiService.ts            # CRUD verifikasi + batch
+│   │   ├── verifikasiService.ts            # CRUD verifikasi + batch + summary
 │   │   └── userService.ts                  # CRUD user admin
 │   ├── data/
 │   │   └── constants.ts                    # Nama rekening, bulan, warna status, getTriwulan()
@@ -523,6 +552,15 @@ SIM-LPU/
 │   └── routes/
 │       └── api.php                         # 15+ API endpoints
 │
+├── ocr-ner-service/                       # OCR-NER Microservice (FastAPI)
+│   ├── main.py                            # FastAPI app + schemas + config
+│   ├── ocr/
+│   │   └── extractor.py                   # Tesseract OCR + preprocessing
+│   ├── ner/
+│   │   └── extractor.py                   # IndoBERT NER + model loader
+│   ├── requirements.txt                   # Python dependencies
+│   └── .env.example                       # Env vars opsional
+│
 ├── package.json
 ├── vite.config.ts
 ├── tsconfig.json
@@ -540,10 +578,19 @@ VITE_API_BASE_URL=http://localhost:8000/api
 
 **Backend** (`backend/.env`):
 ```
-OCR_NER_API_URL=http://localhost:8000/api/mock/ocr-ner
-OCR_NER_USE_MOCK=true
+OCR_NER_API_URL=http://localhost:5001/extract
+OCR_NER_USE_MOCK=false
 QUEUE_CONNECTION=database
 FRONTEND_URL=http://localhost:5173
+```
+
+**OCR-NER Service** (`ocr-ner-service/` — semua env var opsional, auto-detect):
+```
+# TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
+# POPPLER_PATH=C:\Program Files\poppler-25.07.0\Library\bin
+# NER_MODEL_NAME=cahya/bert-base-indonesian-NER
+# HOST=0.0.0.0
+# PORT=5001
 ```
 
 ---
@@ -556,6 +603,6 @@ Untuk menjalankan aplikasi secara lokal, Anda membutuhkan **2-3 terminal terpisa
 |----------|----------|------------|
 | Terminal 1 | `cd backend && php artisan serve` | Laravel API server (port 8000) |
 | Terminal 2 | `npm run dev` | React dev server (port 5173) |
-| Terminal 3 | `cd ocr-ner-service && start.bat` | OCR-NER service (port 5001, opsional jika mock) |
+| Terminal 3 | `cd ocr-ner-service && python main.py` | OCR-NER service (port 5001, opsional jika mock) |
 
 > **Penting:** Setiap terminal baru yang dibuka perlu menjalankan `$env:PATH = "LOKASI_PHP;" + $env:PATH` jika PHP belum tersedia secara global di system PATH.
