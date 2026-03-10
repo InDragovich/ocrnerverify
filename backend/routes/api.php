@@ -25,8 +25,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
 
-    // Verifikasi - stats must come before {id} route
+    // Verifikasi - stats & summary must come before {id} route
     Route::get('/verifikasi/stats', [VerifikasiController::class, 'stats'])
+        ->middleware('role:verifikator,super_admin');
+    Route::get('/verifikasi/summary', [VerifikasiController::class, 'summary'])
         ->middleware('role:verifikator,super_admin');
 
     // Verifikasi - batch routes must come before {id} route

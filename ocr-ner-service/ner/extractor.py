@@ -1,19 +1,59 @@
 """
-NER entity extraction and verification.
-Ported from Colab notebook cells 25, 29, 31, 33, 35, 37.
-
-Extracts: kategori, periode, nominal from OCR text using IndoBERT NER.
+NER entity extraction using IndoBERT (cahya/bert-base-indonesian-NER).
+Includes model loading (singleton) and entity extraction for kategori, periode, nominal.
 """
 
+import os
 import re
 import logging
 from typing import Optional
 
-from ner.model import get_pipeline
+import torch
+from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 logger = logging.getLogger(__name__)
 
-# ─── Category mapping (from notebook cell 31) ─────────────────────────────────
+# ── Config ───────────────────────────────────────────────────────────────────
+
+NER_MODEL_NAME = os.environ.get("NER_MODEL_NAME", "cahya/bert-base-indonesian-NER")
+
+# ── Singleton NER pipeline ───────────────────────────────────────────────────
+
+_ner_pipeline = None
+
+
+def load_model() -> None:
+    """Load NER model into GPU/CPU. Called once at application startup."""
+    global _ner_pipeline
+
+    device = 0 if torch.cuda.is_available() else -1
+    print(f"[NER] Model:  {NER_MODEL_NAME}")
+    print(f"[NER] Device: {'GPU (CUDA)' if device == 0 else 'CPU'}")
+
+    tokenizer = AutoTokenizer.from_pretrained(NER_MODEL_NAME)
+    model = AutoModelForTokenClassification.from_pretrained(NER_MODEL_NAME)
+
+    _ner_pipeline = pipeline(
+        "token-classification",
+        model=model,
+        tokenizer=tokenizer,
+        aggregation_strategy="simple",
+        device=device,
+    )
+
+    # Warm-up inference
+    test_text = "PT PLN menerbitkan tagihan bulan Oktober 2024 sebesar Rp 200000"
+    test_result = _ner_pipeline(test_text)
+    print(f"[NER] Loaded. Warm-up: {len(test_result)} entities detected")
+
+
+def _get_pipeline():
+    if _ner_pipeline is None:
+        raise RuntimeError("NER pipeline not initialized. Call load_model() first.")
+    return _ner_pipeline
+
+
+# ── Constants ────────────────────────────────────────────────────────────────
 
 CATEGORY_MAPPING = {
     "Listrik": [
@@ -30,8 +70,6 @@ CATEGORY_MAPPING = {
         "KEBERSIHAN", "PENERANGAN", "RUMPUT", "PEMELIHARAAN",
     ],
 }
-
-# ─── Month constants (from notebook cell 33) ──────────────────────────────────
 
 ID_MONTHS = {
     "jan": "Januari", "januari": "Januari",
@@ -54,13 +92,10 @@ MONTHS_LIST = [
 ]
 
 
-# ─── Text preprocessing (from notebook cell 29) ───────────────────────────────
+# ── Text preprocessing ──────────────────────────────────────────────────────
 
-def preprocess_text_for_ner(text: str) -> str:
-    """
-    Reorder text so lines containing nominal keywords appear first.
-    This improves NER detection accuracy for MON (money) entities.
-    """
+def _preprocess_text_for_ner(text: str) -> str:
+    """Reorder text so lines with nominal keywords appear first (improves MON detection)."""
     lines = text.split("\n")
     priority_lines = []
     other_lines = []
@@ -79,13 +114,10 @@ def preprocess_text_for_ner(text: str) -> str:
     return "\n".join(priority_lines + other_lines)
 
 
-# ─── Rupiah normalization (from notebook cell 29) ─────────────────────────────
+# ── Rupiah normalization ────────────────────────────────────────────────────
 
-def normalize_rupiah(text: str) -> Optional[int]:
-    """
-    Normalize Indonesian rupiah format to integer.
-    Supports: Rp 200.000, 200000, 2,5 juta, 500 ribu
-    """
+def _normalize_rupiah(text: str) -> Optional[int]:
+    """Normalize Indonesian rupiah format to integer."""
     if not text:
         return None
 
@@ -104,46 +136,33 @@ def normalize_rupiah(text: str) -> Optional[int]:
             val = float(match.group(1).replace(".", "").replace(",", "."))
             return int(val * 1_000)
 
-    # Strip Rp prefix
     text = re.sub(r"rp\.?\s*", "", text)
-
-    # Extract only digits, dots, commas
     clean = re.sub(r"[^\d.,]", "", text)
     if not clean:
         return None
 
     try:
-        # Indonesian format: 200.000 (dot = thousands separator)
         if "." in clean and "," not in clean:
             if len(clean.split(".")[-1]) == 3:
                 return int(clean.replace(".", ""))
 
-        # Format: 200,000 (comma = thousands separator)
         if "," in clean and "." not in clean:
             return int(clean.replace(",", ""))
 
-        # Plain number
         if clean.replace(".", "").replace(",", "").isdigit():
             return int(clean.replace(".", "").replace(",", ""))
-
     except (ValueError, TypeError):
         pass
 
     return None
 
 
-# ─── NER entity extraction (from notebook cell 25) ────────────────────────────
+# ── NER inference ────────────────────────────────────────────────────────────
 
-def extract_entities_with_ner(text: str) -> list[dict]:
-    """
-    Run IndoBERT NER pipeline on text.
-    Returns list of {text, label, score, start, end}.
-    """
-    ner = get_pipeline()
-
-    # IndoBERT has ~512 token limit; truncate long texts
-    # Keep first ~2000 chars which usually covers header + billing info
-    chunk = text[:2000]
+def _extract_entities_with_ner(text: str) -> list[dict]:
+    """Run IndoBERT NER pipeline on text."""
+    ner = _get_pipeline()
+    chunk = text[:2000]  # IndoBERT ~512 token limit
 
     try:
         entities = ner(chunk)
@@ -151,30 +170,23 @@ def extract_entities_with_ner(text: str) -> list[dict]:
         logger.error(f"NER inference error: {e}")
         return []
 
-    formatted = []
-    for ent in entities:
-        formatted.append({
+    return [
+        {
             "text": ent.get("word", "").replace("##", ""),
             "label": ent.get("entity_group", ""),
             "score": float(ent.get("score", 0.0)),
             "start": int(ent.get("start", 0)),
             "end": int(ent.get("end", 0)),
-        })
+        }
+        for ent in entities
+    ]
 
-    return formatted
 
+# ── Category extraction ─────────────────────────────────────────────────────
 
-# ─── Category extraction (from notebook cell 31) ──────────────────────────────
-
-def extract_category_from_entities(
-    entities: list[dict], raw_text: str
-) -> tuple[Optional[str], float]:
-    """
-    Extract document category from ORG entities.
-    Returns (category_name, confidence_score).
-    """
+def _extract_category(entities: list[dict], raw_text: str) -> tuple[Optional[str], float]:
+    """Extract document category from ORG entities."""
     org_entities = [e for e in entities if e["label"] == "ORG"]
-
     category_scores: dict[str, float] = {cat: 0.0 for cat in CATEGORY_MAPPING}
 
     for org_ent in org_entities:
@@ -193,10 +205,10 @@ def extract_category_from_entities(
     return None, 0.0
 
 
-# ─── Date/period parsing (from notebook cell 33) ──────────────────────────────
+# ── Period extraction ────────────────────────────────────────────────────────
 
 def _try_parse_short_date(token: str) -> Optional[tuple[str, int]]:
-    """Parse OKT24, JUL25 style tokens → (month_name, year)."""
+    """Parse OKT24, JUL25 style tokens."""
     token = token.strip().lower()
     m = re.match(r"^([a-z]{3,4})(\d{2})$", token)
     if m:
@@ -207,11 +219,8 @@ def _try_parse_short_date(token: str) -> Optional[tuple[str, int]]:
     return None
 
 
-def normalize_date_to_period(text: str) -> Optional[str]:
-    """
-    Normalize various date formats to 'Bulan Tahun' (e.g., 'Oktober 2024').
-    Supports: BL/TH OKT24, Oktober 2024, 10/2024, DD-MM-YYYY, OKT24.
-    """
+def _normalize_date_to_period(text: str) -> Optional[str]:
+    """Normalize various date formats to 'Bulan Tahun' (e.g., 'Oktober 2024')."""
     t = text.strip()
 
     # Pattern 1: BL/TH format
@@ -264,47 +273,38 @@ def normalize_date_to_period(text: str) -> Optional[str]:
     return None
 
 
-def extract_period_from_entities(
-    entities: list[dict], raw_text: str
-) -> Optional[str]:
-    """
-    Extract period from NER DATE entities and raw text.
-    Priority: 1) NER DATE entities  2) Lines with period keywords  3) Full text
-    """
+def _extract_period(entities: list[dict], raw_text: str) -> Optional[str]:
+    """Extract period. Priority: NER DATE entities -> keyword lines -> full text."""
     # Priority 1: NER DATE entities
     dat_spans = [
         e["text"] for e in entities
         if e.get("label", "").upper() in ("DAT", "DATE")
     ]
     for span in dat_spans:
-        p = normalize_date_to_period(span)
+        p = _normalize_date_to_period(span)
         if p:
             return p
 
     # Priority 2: Lines with period keywords
     for line in raw_text.splitlines():
         if re.search(r"\b(periode|bl/th|bulan|bln)\b", line, flags=re.IGNORECASE):
-            p = normalize_date_to_period(line)
+            p = _normalize_date_to_period(line)
             if p:
                 return p
 
     # Priority 3: Fallback to full text
-    return normalize_date_to_period(raw_text)
+    return _normalize_date_to_period(raw_text)
 
 
-# ─── Nominal extraction (from notebook cell 35) ───────────────────────────────
+# ── Nominal extraction ──────────────────────────────────────────────────────
 
-def extract_nominal_from_entities(
+def _extract_nominal(
     entities: list[dict],
     raw_text: str,
     user_nominal: Optional[int] = None,
 ) -> Optional[int]:
-    """
-    Extract nominal amount from MON (Money) entities.
-    Uses similarity scoring against user_nominal to pick best candidate.
-    """
+    """Extract nominal amount from MON entities with similarity scoring."""
     exclude_keywords = ["materai", "ppn", "pajak", "diskon", "potongan", "kotor"]
-
     mon_entities = [e for e in entities if e.get("label", "").upper() == "MON"]
 
     if not mon_entities:
@@ -316,11 +316,10 @@ def extract_nominal_from_entities(
         mon_text = mon_ent["text"]
         mon_score = mon_ent["score"]
 
-        normalized = normalize_rupiah(mon_text)
+        normalized = _normalize_rupiah(mon_text)
         if not normalized:
             continue
 
-        # Validate range (1,000 - 50,000,000)
         if not (1000 <= normalized <= 50_000_000):
             continue
 
@@ -383,7 +382,7 @@ def extract_nominal_from_entities(
     return None
 
 
-# ─── Main orchestrator (from notebook cell 37) ────────────────────────────────
+# ── Main orchestrator ────────────────────────────────────────────────────────
 
 def verify_document_ner(
     ocr_text: str,
@@ -393,25 +392,17 @@ def verify_document_ner(
 ) -> dict:
     """
     Full NER extraction pipeline.
-
-    Returns dict with keys: kategori, periode, nominal
-    matching the format expected by Laravel's MatchingService.
+    Returns dict with keys: kategori, periode, nominal.
     """
-    # Step 0: Preprocess text
-    preprocessed = preprocess_text_for_ner(ocr_text)
-
-    # Step 1: Run NER
-    entities = extract_entities_with_ner(preprocessed)
+    preprocessed = _preprocess_text_for_ner(ocr_text)
+    entities = _extract_entities_with_ner(preprocessed)
     logger.info(f"NER found {len(entities)} entities")
 
-    # Step 2: Extract fields
-    kategori, cat_conf = extract_category_from_entities(entities, ocr_text)
-    periode = extract_period_from_entities(entities, ocr_text)
-    nominal = extract_nominal_from_entities(entities, ocr_text, user_nominal)
+    kategori, _ = _extract_category(entities, ocr_text)
+    periode = _extract_period(entities, ocr_text)
+    nominal = _extract_nominal(entities, ocr_text, user_nominal)
 
-    logger.info(
-        f"Extracted — kategori: {kategori}, periode: {periode}, nominal: {nominal}"
-    )
+    logger.info(f"Extracted -- kategori: {kategori}, periode: {periode}, nominal: {nominal}")
 
     return {
         "kategori": kategori,

@@ -40,6 +40,15 @@ class VerifikasiController extends Controller
         if ($request->filled('hasil_kesesuaian')) {
             $query->where('hasil_kesesuaian', $request->hasil_kesesuaian);
         }
+        if ($request->filled('regional')) {
+            $query->where('regional', $request->regional);
+        }
+        if ($request->filled('kcu')) {
+            $query->where('kcu', $request->kcu);
+        }
+        if ($request->filled('kpc')) {
+            $query->where('kpc', $request->kpc);
+        }
 
         $perPage = $request->input('per_page', 15);
         $data = $query->orderBy('created_at', 'desc')->paginate($perPage);
@@ -233,6 +242,44 @@ class VerifikasiController extends Controller
             'message' => 'Keputusan berhasil ditetapkan.',
             'data' => $verifikasi->fresh()->load(['operator:id,name,username', 'verifikator:id,name,username']),
         ]);
+    }
+
+    public function summary(Request $request): JsonResponse
+    {
+        $groupBy = $request->input('group_by', 'regional');
+
+        if (!in_array($groupBy, ['regional', 'kcu', 'kpc'])) {
+            return response()->json(['message' => 'group_by harus regional, kcu, atau kpc.'], 422);
+        }
+
+        $query = VerifikasiBiayaRutin::query();
+
+        if ($request->filled('tahun')) $query->where('tahun', $request->tahun);
+        if ($request->filled('triwulan')) $query->where('triwulan', $request->triwulan);
+        if ($request->filled('regional')) $query->where('regional', $request->regional);
+        if ($request->filled('kcu')) $query->where('kcu', $request->kcu);
+
+        $subCount = match ($groupBy) {
+            'regional' => 'COUNT(DISTINCT kcu)',
+            'kcu' => 'COUNT(DISTINCT kpc)',
+            'kpc' => '0',
+        };
+
+        $data = $query
+            ->selectRaw("
+                {$groupBy} as nama,
+                COUNT(*) as total_dokumen,
+                SUM(nominal_pelaporan) as total_biaya,
+                SUM(CASE WHEN status_verifikasi = 'selesai' THEN 1 ELSE 0 END) as selesai,
+                SUM(CASE WHEN status_verifikasi = 'menunggu' OR status_verifikasi = 'diproses' THEN 1 ELSE 0 END) as menunggu,
+                SUM(CASE WHEN status_verifikasi = 'gagal' THEN 1 ELSE 0 END) as gagal,
+                {$subCount} as jumlah_sub
+            ")
+            ->groupBy($groupBy)
+            ->orderBy($groupBy)
+            ->get();
+
+        return response()->json($data);
     }
 
     public function stats(Request $request): JsonResponse

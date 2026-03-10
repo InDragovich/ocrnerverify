@@ -1,8 +1,11 @@
 """
 SIM-LPU OCR-NER Microservice
-FastAPI application that receives document files and returns OCR text + NER entities.
+
+Setup: pip install -r requirements.txt
+Run:   python main.py
 """
 
+import os
 import re
 import logging
 from contextlib import asynccontextmanager
@@ -10,26 +13,47 @@ from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from config import settings
-from ner.extractor import verify_document_ner
-from ner.model import load_model
 from ocr.extractor import extract_text_from_file
-from schemas.response import EntitiesSchema, OcrNerResponse
+from ner.extractor import load_model, verify_document_ner
+
+# ── Config (override via env vars, no .env file needed) ──────────────────────
+
+HOST = os.environ.get("HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", "5001"))
+MAX_FILE_SIZE_MB = int(os.environ.get("MAX_FILE_SIZE_MB", "10"))
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 logging.basicConfig(
-    level=settings.log_level,
+    level=LOG_LEVEL,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
-MAX_FILE_BYTES = settings.max_file_size_mb * 1024 * 1024
+MAX_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
+
+# ── Schemas ──────────────────────────────────────────────────────────────────
+
+class EntitiesSchema(BaseModel):
+    kategori: Optional[str] = None
+    periode: Optional[str] = None
+    nominal: Optional[str] = None
+
+
+class OcrNerResponse(BaseModel):
+    text_ocr: str
+    entities: EntitiesSchema
+    status: str  # "success" | "partial_success" | "failed"
+    error_message: Optional[str] = None
+
+
+# ── FastAPI app ──────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load NER model on startup."""
     logger.info("Starting OCR-NER service...")
     load_model()
     logger.info("OCR-NER service ready!")
@@ -39,7 +63,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SIM-LPU OCR-NER Service",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -63,14 +87,6 @@ async def extract(
     periode: Optional[str] = Form(None),
     nominal: Optional[str] = Form(None),
 ):
-    """
-    Extract OCR text and NER entities from uploaded document.
-
-    - file_lampiran: PDF, JPG, JPEG, or PNG file (max 10MB)
-    - kategori: User-reported category (optional, for scoring)
-    - periode: User-reported period (optional, for scoring)
-    - nominal: User-reported amount (optional, for similarity scoring)
-    """
     filename = file_lampiran.filename or ""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
@@ -85,12 +101,12 @@ async def extract(
     if len(file_bytes) > MAX_FILE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"File terlalu besar. Maksimal {settings.max_file_size_mb}MB.",
+            detail=f"File terlalu besar. Maksimal {MAX_FILE_SIZE_MB}MB.",
         )
 
     logger.info(f"Processing: {filename} ({len(file_bytes)} bytes)")
 
-    # ── Phase 1: OCR ──────────────────────────────────────────────────────
+    # ── Phase 1: OCR ─────────────────────────────────────────────────────
     try:
         text_ocr = extract_text_from_file(file_bytes, filename)
     except Exception as e:
@@ -110,7 +126,7 @@ async def extract(
             error_message="Tidak ada teks yang dapat diekstrak dari dokumen.",
         )
 
-    # ── Phase 2: NER ──────────────────────────────────────────────────────
+    # ── Phase 2: NER ─────────────────────────────────────────────────────
     try:
         user_nominal_int = None
         if nominal:
@@ -132,7 +148,7 @@ async def extract(
             error_message=f"NER gagal: {str(e)}",
         )
 
-    # ── Determine status ──────────────────────────────────────────────────
+    # ── Determine status ─────────────────────────────────────────────────
     null_count = sum(1 for v in entities_dict.values() if v is None)
 
     if null_count == 0:
@@ -159,9 +175,4 @@ async def extract(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=True,
-    )
+    uvicorn.run("main:app", host=HOST, port=PORT, reload=True)

@@ -70,8 +70,29 @@ export interface Filters {
     periode?: string;
     status_verifikasi?: string;
     hasil_kesesuaian?: string;
+    regional?: string;
+    kcu?: string;
+    kpc?: string;
     page?: number;
     per_page?: number;
+}
+
+export interface SummaryItem {
+    nama: string;
+    total_dokumen: number;
+    total_biaya: number;
+    selesai: number;
+    menunggu: number;
+    gagal: number;
+    jumlah_sub: number;
+}
+
+export interface SummaryParams {
+    group_by: 'regional' | 'kcu' | 'kpc';
+    tahun?: string;
+    triwulan?: string;
+    regional?: string;
+    kcu?: string;
 }
 
 export const verifikasiService = {
@@ -80,6 +101,14 @@ export const verifikasiService = {
             Object.entries(filters).filter(([, v]) => v !== undefined && v !== '')
         );
         const { data } = await api.get<PaginatedResponse>('/verifikasi', { params });
+        return data;
+    },
+
+    async getSummary(params: SummaryParams): Promise<SummaryItem[]> {
+        const cleanParams = Object.fromEntries(
+            Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+        );
+        const { data } = await api.get<SummaryItem[]>('/verifikasi/summary', { params: cleanParams });
         return data;
     },
 
