@@ -602,7 +602,7 @@ export const VerifierDashboard: React.FC = () => {
                                         <th className="p-4">TW</th>
                                         <th className="p-4">Periode</th>
                                         <th className="p-4">Pelaporan</th>
-                                        <th className="p-4">Verifikasi</th>
+                                        <th className="p-4 text-center">Status Verifikasi</th>
                                         <th className="p-4 text-center">Aksi</th>
                                     </tr>
                                 </thead>
@@ -654,15 +654,35 @@ export const VerifierDashboard: React.FC = () => {
                                                         `Rp ${doc.nominal_pelaporan.toLocaleString('id-ID')}`
                                                     )}
                                                 </td>
-                                                <td className={clsx('p-4 text-sm font-semibold', nominalColor)}>
+                                                <td className="p-4 text-center">
                                                     {isProcessingBatch ? (
-                                                        <span className="flex items-center gap-1 text-indigo-500">
-                                                            <Loader2 size={14} className="animate-spin" /> Proses...
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
+                                                            <Loader2 size={12} className="animate-spin" /> Diproses
                                                         </span>
-                                                    ) : nerNominal !== null ? (
-                                                        `Rp ${nerNominal.toLocaleString('id-ID')}`
+                                                    ) : doc.status_verifikasi === 'selesai' && doc.hasil_kesesuaian === 'sesuai' ? (
+                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                                                            Sesuai
+                                                        </span>
+                                                    ) : doc.status_verifikasi === 'selesai' && doc.hasil_kesesuaian === 'tidak_sesuai' ? (
+                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                                                            Tidak Sesuai
+                                                        </span>
+                                                    ) : doc.status_verifikasi === 'selesai' ? (
+                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                                                            Belum Ditentukan
+                                                        </span>
+                                                    ) : doc.status_verifikasi === 'gagal' ? (
+                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                                                            Gagal
+                                                        </span>
+                                                    ) : doc.status_verifikasi === 'diproses' ? (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
+                                                            <Loader2 size={12} className="animate-spin" /> Diproses
+                                                        </span>
                                                     ) : (
-                                                        <span className="text-gray-300">-</span>
+                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+                                                            Menunggu
+                                                        </span>
                                                     )}
                                                 </td>
                                                 <td className="p-4 text-center">
