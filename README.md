@@ -165,6 +165,15 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 - Env var disederhanakan: hapus prefix `OCR_NER_`, semua opsional (auto-detect)
 - Jalankan service cukup dengan `python main.py` (tanpa `start.bat`)
 
+### v1.6.1 — Badge Status Verifikasi di Tabel Verifier (2026-04-15)
+**Perubahan UI:**
+- Kolom "Verifikasi" (sebelumnya menampilkan nominal NER) di tabel VerifierDashboard level dokumen diganti menjadi kolom **"Status Verifikasi"** berupa badge berwarna
+- Status yang ditampilkan: **Sesuai** (hijau), **Tidak Sesuai** (merah), **Belum Ditentukan** (abu), **Diproses** (indigo, spinner), **Gagal** (merah), **Menunggu** (kuning)
+- Tujuan: memudahkan verifier melihat ringkasan status tiap dokumen tanpa perlu membuka detail
+
+**File Berubah:**
+- `src/pages/VerifierDashboard.tsx` — ganti render kolom nominal NER jadi badge status verifikasi
+
 ---
 
 ## Prasyarat
