@@ -18,7 +18,6 @@ import clsx from 'clsx';
 type DrillLevel = 'regional' | 'kcu' | 'kpc' | 'rekening';
 interface DrillPath { regional?: string; kcu?: string; kpc?: string; }
 
-const LEVEL_ORDER: DrillLevel[] = ['regional', 'kcu', 'kpc', 'rekening'];
 const LEVEL_LABELS: Record<DrillLevel, string> = {
     regional: 'Regional',
     kcu: 'KCU',
@@ -44,11 +43,6 @@ function getNominalColor(doc: VerifikasiItem): string {
     const nerNominal = doc.hasil_entitas?.nominal ? Number(doc.hasil_entitas.nominal) : null;
     if (nerNominal === null) return 'text-gray-400';
     return doc.nominal_pelaporan === nerNominal ? 'text-green-600' : 'text-red-600';
-}
-
-function getNerNominal(doc: VerifikasiItem): number | null {
-    if (!doc.hasil_entitas?.nominal) return null;
-    return Number(doc.hasil_entitas.nominal);
 }
 
 function formatBiaya(value: number): string {
@@ -97,7 +91,6 @@ const SummaryTable: React.FC<SummaryTableProps> = ({ data, level, loading, onDri
                         ) : data.map((item, idx) => {
                             const total = item.total_dokumen;
                             const sudahVerifikasi = item.selesai;
-                            const belumVerifikasi = item.menunggu + item.gagal;
                             const pct = total > 0 ? Math.round((sudahVerifikasi / total) * 100) : 0;
 
                             return (
@@ -624,7 +617,6 @@ export const VerifierDashboard: React.FC = () => {
                                         const isProcessingBatch = batchIds.includes(doc.id);
                                         const rowNum = ((filters.page || 1) - 1) * (filters.per_page || 15) + idx + 1;
                                         const nominalColor = getNominalColor(doc);
-                                        const nerNominal = getNerNominal(doc);
 
                                         return (
                                             <tr key={doc.id} className={clsx('hover:bg-gray-50/50 transition-colors', isProcessingBatch && 'bg-indigo-50/30')}>
