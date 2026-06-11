@@ -1,7 +1,6 @@
 providers = ["php"]
 
 [phases.setup]
-nixPkgs = ["php84", "php84Packages.composer", "nodejs"]
 nixPkgsLibs = ["sqlite"]
 
 [phases.install]
