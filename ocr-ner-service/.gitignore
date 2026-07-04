@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .env
+
+# Local NER model (~500MB) — distribute separately via HF Hub or volume mount
+models/

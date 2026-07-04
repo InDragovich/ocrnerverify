@@ -9,9 +9,10 @@ import clsx from 'clsx';
 interface DetailModalProps {
     doc: VerifikasiItem;
     onClose: () => void;
+    readOnly?: boolean;
 }
 
-export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClose }) => {
+export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClose, readOnly = false }) => {
     const [doc, setDoc] = useState<VerifikasiItem>(initialDoc);
     const [tab, setTab] = useState<'info' | 'ocr' | 'keputusan'>('info');
 
@@ -139,7 +140,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                     {[
                         { key: 'info', label: 'Informasi' },
                         { key: 'ocr', label: 'Hasil OCR/NER' },
-                        { key: 'keputusan', label: 'Keputusan' },
+                        ...(readOnly ? [] : [{ key: 'keputusan', label: 'Keputusan' }]),
                     ].map(t => (
                         <button
                             key={t.key}

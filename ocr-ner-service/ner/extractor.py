@@ -1,12 +1,18 @@
 """
-NER entity extraction using IndoBERT (cahya/bert-base-indonesian-NER).
-Includes model loading (singleton) and entity extraction for kategori, periode, nominal.
+NER entity extraction using fine-tuned IndoBERT.
+
+Model: ner_indobert_p2_best (fine-tuned IndoBERT BertForTokenClassification).
+Labels: O, B-KATEGORI, I-KATEGORI, B-PERIODE, I-PERIODE, B-NOMINAL, I-NOMINAL.
+
+Logika port dari Notebook_2_Demo (rev2): extract entities → group by label →
+normalize per kategori/periode/nominal → return triple.
 """
 
 import os
 import re
 import logging
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
@@ -15,7 +21,9 @@ logger = logging.getLogger(__name__)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
-NER_MODEL_NAME = os.environ.get("NER_MODEL_NAME", "cahya/bert-base-indonesian-NER")
+_DEFAULT_MODEL_DIR = (Path(__file__).resolve().parent.parent / "models" / "ner_indobert").as_posix()
+NER_MODEL_NAME = os.environ.get("NER_MODEL_NAME", _DEFAULT_MODEL_DIR)
+NER_MAX_CHARS = int(os.environ.get("NER_MAX_CHARS", "2000"))
 
 # ── Singleton NER pipeline ───────────────────────────────────────────────────
 
@@ -23,12 +31,20 @@ _ner_pipeline = None
 
 
 def load_model() -> None:
-    """Load NER model into GPU/CPU. Called once at application startup."""
+    """Load fine-tuned NER model. Called once at application startup."""
     global _ner_pipeline
 
     device = 0 if torch.cuda.is_available() else -1
     print(f"[NER] Model:  {NER_MODEL_NAME}")
     print(f"[NER] Device: {'GPU (CUDA)' if device == 0 else 'CPU'}")
+
+    if not Path(NER_MODEL_NAME).exists() and not NER_MODEL_NAME.count("/") == 1:
+        raise FileNotFoundError(
+            f"NER model tidak ditemukan: {NER_MODEL_NAME}\n"
+            "Letakkan file model (config.json, model.safetensors, tokenizer.json, "
+            "tokenizer_config.json) di folder tersebut, atau set env "
+            "NER_MODEL_NAME ke HuggingFace repo id."
+        )
 
     tokenizer = AutoTokenizer.from_pretrained(NER_MODEL_NAME)
     model = AutoModelForTokenClassification.from_pretrained(NER_MODEL_NAME)
@@ -41,10 +57,10 @@ def load_model() -> None:
         device=device,
     )
 
-    # Warm-up inference
-    test_text = "PT PLN menerbitkan tagihan bulan Oktober 2024 sebesar Rp 200000"
-    test_result = _ner_pipeline(test_text)
-    print(f"[NER] Loaded. Warm-up: {len(test_result)} entities detected")
+    # Warm-up
+    test = "PT PLN menerbitkan tagihan bulan Oktober 2024 sebesar Rp 200.000"
+    result = _ner_pipeline(test)
+    print(f"[NER] Loaded. Warm-up: {len(result)} entities detected")
 
 
 def _get_pipeline():
@@ -53,116 +69,155 @@ def _get_pipeline():
     return _ner_pipeline
 
 
-# ── Constants ────────────────────────────────────────────────────────────────
+# ── Konstanta normalisasi (port dari Notebook 2) ────────────────────────────
 
-CATEGORY_MAPPING = {
+MONTHS_ID = {
+    "JANUARI": 1, "JAN": 1,
+    "FEBRUARI": 2, "FEB": 2,
+    "MARET": 3, "MAR": 3,
+    "APRIL": 4, "APR": 4,
+    "MEI": 5,
+    "JUNI": 6, "JUN": 6,
+    "JULI": 7, "JUL": 7,
+    "AGUSTUS": 8, "AGU": 8, "AGS": 8, "AUG": 8,
+    "SEPTEMBER": 9, "SEP": 9, "SEPT": 9,
+    "OKTOBER": 10, "OKOTBER": 10, "OKT": 10, "OCT": 10,
+    "NOVEMBER": 11, "NOV": 11,
+    "DESEMBER": 12, "DES": 12, "DEC": 12,
+}
+
+MONTH_NAMES = {
+    1: "Januari", 2: "Februari", 3: "Maret", 4: "April",
+    5: "Mei", 6: "Juni", 7: "Juli", 8: "Agustus",
+    9: "September", 10: "Oktober", 11: "November", 12: "Desember",
+}
+
+VALID_PERIOD_YEAR_RANGE = (2020, 2027)
+
+CATEGORY_PATTERNS = {
     "Listrik": [
-        "PLN", "PERUSAHAAN LISTRIK NEGARA", "PT PLN", "LISTRIK NEGARA", "LISTRIK",
+        r"PERUSAHAAN LISTRIK NEGARA",
+        r"PT PLN",
+        r"TAGIHAN LISTRIK",
+        r"PLN",
+        r"LISTRIK",
     ],
     "Telepon": [
-        "TELKOMSEL", "XL", "AXIS", "INDOSAT", "IM3", "TRI",
-        "HANDPHONE", "TELEPON", "FAX", "TOPUP",
+        r"TELKOM",
+        r"HANDPHONE",
+        r"TELEPON",
+        r"TELP",
+        r"XL",
+        r"AXIS",
     ],
     "Air dan Gas": [
-        "AIR", "PDAM", "GAS", "LPG", "GALON",
-    ],
-    "Kebersihan": [
-        "KEBERSIHAN", "PENERANGAN", "RUMPUT", "PEMELIHARAAN",
+        r"PDAM[^\n]{0,40}",
+        r"TAGIHAN AIR",
+        r"AIR",
+        r"LPG",
+        r"GALON",
+        r"GAS",
     ],
 }
 
-ID_MONTHS = {
-    "jan": "Januari", "januari": "Januari",
-    "feb": "Februari", "februari": "Februari",
-    "mar": "Maret", "maret": "Maret",
-    "apr": "April", "april": "April",
-    "mei": "Mei",
-    "jun": "Juni", "juni": "Juni",
-    "jul": "Juli", "juli": "Juli",
-    "agu": "Agustus", "agt": "Agustus", "agustus": "Agustus",
-    "sep": "September", "september": "September",
-    "okt": "Oktober", "oktober": "Oktober",
-    "nov": "November", "november": "November",
-    "des": "Desember", "desember": "Desember",
-}
 
-MONTHS_LIST = [
-    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-]
+# ── Helper: text cleaning ───────────────────────────────────────────────────
 
 
-# ── Text preprocessing ──────────────────────────────────────────────────────
-
-def _preprocess_text_for_ner(text: str) -> str:
-    """Reorder text so lines with nominal keywords appear first (improves MON detection)."""
-    lines = text.split("\n")
-    priority_lines = []
-    other_lines = []
-
-    nominal_keywords = [
-        "total", "bayar", "tagihan", "jumlah", "pembayaran", "rp", "rupiah",
-    ]
-
-    for line in lines:
-        line_lower = line.lower()
-        if any(kw in line_lower for kw in nominal_keywords):
-            priority_lines.append(line)
-        else:
-            other_lines.append(line)
-
-    return "\n".join(priority_lines + other_lines)
+def _clean_ocr_text(text: str) -> str:
+    text = str(text or "")
+    text = text.replace(" ", " ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
-# ── Rupiah normalization ────────────────────────────────────────────────────
+# ── Normalisasi: kategori, periode, nominal ─────────────────────────────────
 
-def _normalize_rupiah(text: str) -> Optional[int]:
-    """Normalize Indonesian rupiah format to integer."""
+
+def _normalize_rupiah(value: Any) -> Optional[int]:
+    """Ekstrak digit saja dari string nominal."""
+    if value is None:
+        return None
+    digits = re.sub(r"\D", "", str(value))
+    return int(digits) if digits else None
+
+
+def _valid_year(year: int) -> bool:
+    return VALID_PERIOD_YEAR_RANGE[0] <= year <= VALID_PERIOD_YEAR_RANGE[1]
+
+
+def _normalize_year(year_text: str) -> Optional[int]:
+    year_text = str(year_text)
+    if len(year_text) == 2:
+        year = 2000 + int(year_text)
+    else:
+        year = int(year_text)
+    return year if _valid_year(year) else None
+
+
+def _normalize_period(value: Any) -> Optional[str]:
+    """Rapikan ke format 'Bulan YYYY' (e.g. 'Oktober 2024')."""
+    text = str(value or "").strip()
     if not text:
         return None
+    upper = text.upper().replace("OKOTBER", "OKTOBER")
 
-    text = text.strip().lower()
+    sep = r"\s*[-/.]\s*"
+    numeric_patterns = [
+        rf"\b\d{{1,2}}{sep}(\d{{1,2}}){sep}(\d{{2,4}})\b",
+        rf"\b(\d{{1,2}}){sep}(\d{{2,4}})\b",
+    ]
+    for pattern in numeric_patterns:
+        for match in re.finditer(pattern, upper):
+            month = int(match.group(1))
+            year = _normalize_year(match.group(2))
+            if 1 <= month <= 12 and year:
+                return f"{MONTH_NAMES[month]} {year}"
 
-    # Handle juta/ribu multipliers
-    if "jt" in text or "juta" in text:
-        match = re.search(r"([\d.,]+)", text)
-        if match:
-            val = float(match.group(1).replace(".", "").replace(",", "."))
-            return int(val * 1_000_000)
-
-    if "rb" in text or "ribu" in text:
-        match = re.search(r"([\d.,]+)", text)
-        if match:
-            val = float(match.group(1).replace(".", "").replace(",", "."))
-            return int(val * 1_000)
-
-    text = re.sub(r"rp\.?\s*", "", text)
-    clean = re.sub(r"[^\d.,]", "", text)
-    if not clean:
-        return None
-
-    try:
-        if "." in clean and "," not in clean:
-            if len(clean.split(".")[-1]) == 3:
-                return int(clean.replace(".", ""))
-
-        if "," in clean and "." not in clean:
-            return int(clean.replace(",", ""))
-
-        if clean.replace(".", "").replace(",", "").isdigit():
-            return int(clean.replace(".", "").replace(",", ""))
-    except (ValueError, TypeError):
-        pass
-
+    month_regex = "|".join(sorted(MONTHS_ID.keys(), key=len, reverse=True))
+    for match in re.finditer(rf"\b({month_regex})\s*[-/]?\s*(\d{{2,4}})\b", upper):
+        month = MONTHS_ID.get(match.group(1))
+        year = _normalize_year(match.group(2))
+        if month and year:
+            return f"{MONTH_NAMES[month]} {year}"
     return None
 
 
-# ── NER inference ────────────────────────────────────────────────────────────
+def _map_category_from_text(value: Any) -> Optional[str]:
+    text = str(value or "")
+    if not text.strip():
+        return None
+    for category, patterns in CATEGORY_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                return category
+    return None
 
-def _extract_entities_with_ner(text: str) -> list[dict]:
-    """Run IndoBERT NER pipeline on text."""
+
+def _choose_first_valid_period(candidates: list[str]) -> Optional[str]:
+    for candidate in candidates:
+        normalized = _normalize_period(candidate)
+        if normalized:
+            return normalized
+    return None
+
+
+def _choose_largest_nominal(candidates: list[str]) -> Optional[int]:
+    """Pilih nominal terbesar (biasanya = total bayar, bukan sub-item)."""
+    values = [_normalize_rupiah(c) for c in candidates]
+    values = [v for v in values if v is not None]
+    return max(values) if values else None
+
+
+# ── NER inference + post-processing ─────────────────────────────────────────
+
+
+def _extract_entities(text: str) -> list[dict]:
+    """Jalankan pipeline NER pada teks bersih."""
     ner = _get_pipeline()
-    chunk = text[:2000]  # IndoBERT ~512 token limit
+    cleaned = _clean_ocr_text(text)
+    chunk = cleaned[:NER_MAX_CHARS]  # IndoBERT 512-token limit; ~2000 char aman
 
     try:
         entities = ner(chunk)
@@ -170,219 +225,50 @@ def _extract_entities_with_ner(text: str) -> list[dict]:
         logger.error(f"NER inference error: {e}")
         return []
 
-    return [
-        {
-            "text": ent.get("word", "").replace("##", ""),
-            "label": ent.get("entity_group", ""),
+    formatted = []
+    for ent in entities:
+        token_text = str(ent.get("word", "")).replace("##", "").strip()
+        if not token_text:
+            continue
+        formatted.append({
+            "text": token_text,
+            "label": str(ent.get("entity_group", "")).upper(),
             "score": float(ent.get("score", 0.0)),
-            "start": int(ent.get("start", 0)),
-            "end": int(ent.get("end", 0)),
-        }
-        for ent in entities
-    ]
+        })
+    return formatted
 
 
-# ── Category extraction ─────────────────────────────────────────────────────
+def _post_process(entities: list[dict]) -> dict:
+    """Kelompokkan per label lalu pilih kandidat final per entitas."""
+    grouped = {"KATEGORI": [], "PERIODE": [], "NOMINAL": []}
+    for ent in entities:
+        label = ent["label"]
+        value = ent["text"]
+        if label in grouped and value:
+            grouped[label].append(value)
 
-def _extract_category(entities: list[dict], raw_text: str) -> tuple[Optional[str], float]:
-    """Extract document category from ORG entities."""
-    org_entities = [e for e in entities if e["label"] == "ORG"]
-    category_scores: dict[str, float] = {cat: 0.0 for cat in CATEGORY_MAPPING}
+    # Kategori: ambil yang pertama bisa di-map ke salah satu kategori valid.
+    kategori_final = None
+    for candidate in grouped["KATEGORI"]:
+        kategori_final = _map_category_from_text(candidate)
+        if kategori_final:
+            break
 
-    for org_ent in org_entities:
-        org_text = org_ent["text"].upper()
-        org_score = org_ent["score"]
+    periode_final = _choose_first_valid_period(grouped["PERIODE"])
+    nominal_final = _choose_largest_nominal(grouped["NOMINAL"])
 
-        for category, keywords in CATEGORY_MAPPING.items():
-            for keyword in keywords:
-                if keyword.upper() in org_text or org_text in keyword.upper():
-                    category_scores[category] += org_score
-
-    if max(category_scores.values()) > 0:
-        best = max(category_scores, key=category_scores.get)
-        return best, category_scores[best]
-
-    return None, 0.0
-
-
-# ── Period extraction ────────────────────────────────────────────────────────
-
-def _try_parse_short_date(token: str) -> Optional[tuple[str, int]]:
-    """Parse OKT24, JUL25 style tokens."""
-    token = token.strip().lower()
-    m = re.match(r"^([a-z]{3,4})(\d{2})$", token)
-    if m:
-        mon_raw, yy = m.group(1), m.group(2)
-        mon = ID_MONTHS.get(mon_raw[:3]) or ID_MONTHS.get(mon_raw)
-        if mon:
-            return mon, 2000 + int(yy)
-    return None
+    return {
+        "kategori_final": kategori_final,
+        "periode_final": periode_final,
+        "nominal_final": nominal_final,
+        "kategori_candidates": grouped["KATEGORI"],
+        "periode_candidates": grouped["PERIODE"],
+        "nominal_candidates": grouped["NOMINAL"],
+    }
 
 
-def _normalize_date_to_period(text: str) -> Optional[str]:
-    """Normalize various date formats to 'Bulan Tahun' (e.g., 'Oktober 2024')."""
-    t = text.strip()
+# ── Public entrypoint ───────────────────────────────────────────────────────
 
-    # Pattern 1: BL/TH format
-    m = re.search(r"BL/TH\s*([^\n]+)", t, flags=re.IGNORECASE)
-    if m:
-        tail = m.group(1)
-        for tok in tail.split():
-            parsed = _try_parse_short_date(tok)
-            if parsed:
-                return f"{parsed[0]} {parsed[1]}"
-
-    # Pattern 2: Full month name + year
-    m = re.search(
-        r"\b(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|"
-        r"jun(?:i)?|jul(?:i)?|ag[ut](?:ustus)?|sep(?:tember)?|"
-        r"okt(?:ober)?|nov(?:ember)?|des(?:ember)?)\s+(\d{4})\b",
-        t, flags=re.IGNORECASE,
-    )
-    if m:
-        mon = ID_MONTHS.get(m.group(1).lower()[:3]) or ID_MONTHS.get(m.group(1).lower())
-        year = int(m.group(2))
-        if mon:
-            return f"{mon} {year}"
-
-    # Pattern 3: DD-MM-YYYY or DD/MM/YYYY
-    m = re.search(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\b", t)
-    if m:
-        mm = int(m.group(2))
-        yy = int(m.group(3))
-        if yy < 100:
-            yy += 2000
-        if 1 <= mm <= 12:
-            return f"{MONTHS_LIST[mm - 1]} {yy}"
-
-    # Pattern 4: MM/YYYY
-    m = re.search(r"\b(\d{1,2})/(\d{4})\b", t)
-    if m:
-        mm = int(m.group(1))
-        yy = int(m.group(2))
-        if 1 <= mm <= 12:
-            return f"{MONTHS_LIST[mm - 1]} {yy}"
-
-    # Pattern 5: OKT24 standalone
-    toks = re.findall(r"\b[A-Za-z]{3,4}\d{2}\b", t)
-    for tok in toks:
-        parsed = _try_parse_short_date(tok)
-        if parsed:
-            return f"{parsed[0]} {parsed[1]}"
-
-    return None
-
-
-def _extract_period(entities: list[dict], raw_text: str) -> Optional[str]:
-    """Extract period. Priority: NER DATE entities -> keyword lines -> full text."""
-    # Priority 1: NER DATE entities
-    dat_spans = [
-        e["text"] for e in entities
-        if e.get("label", "").upper() in ("DAT", "DATE")
-    ]
-    for span in dat_spans:
-        p = _normalize_date_to_period(span)
-        if p:
-            return p
-
-    # Priority 2: Lines with period keywords
-    for line in raw_text.splitlines():
-        if re.search(r"\b(periode|bl/th|bulan|bln)\b", line, flags=re.IGNORECASE):
-            p = _normalize_date_to_period(line)
-            if p:
-                return p
-
-    # Priority 3: Fallback to full text
-    return _normalize_date_to_period(raw_text)
-
-
-# ── Nominal extraction ──────────────────────────────────────────────────────
-
-def _extract_nominal(
-    entities: list[dict],
-    raw_text: str,
-    user_nominal: Optional[int] = None,
-) -> Optional[int]:
-    """Extract nominal amount from MON entities with similarity scoring."""
-    exclude_keywords = ["materai", "ppn", "pajak", "diskon", "potongan", "kotor"]
-    mon_entities = [e for e in entities if e.get("label", "").upper() == "MON"]
-
-    if not mon_entities:
-        return None
-
-    candidates = []
-
-    for mon_ent in mon_entities:
-        mon_text = mon_ent["text"]
-        mon_score = mon_ent["score"]
-
-        normalized = _normalize_rupiah(mon_text)
-        if not normalized:
-            continue
-
-        if not (1000 <= normalized <= 50_000_000):
-            continue
-
-        # Check exclude keywords in surrounding context
-        try:
-            position = raw_text.lower().find(mon_text.lower())
-
-            if position == -1:
-                normalized_text = re.sub(r"\s+", " ", mon_text.strip())
-                pattern = re.escape(normalized_text).replace(r"\ ", r"\s*")
-                match = re.search(pattern, raw_text, re.IGNORECASE)
-                if match:
-                    position = match.start()
-
-            if position == -1:
-                number_only = re.sub(r"[^\d]", "", mon_text)
-                if number_only and len(number_only) >= 3:
-                    match = re.search(number_only, raw_text)
-                    if match:
-                        position = match.start()
-
-            if position != -1:
-                context_start = max(0, position - 100)
-                context = raw_text[context_start:position].lower()
-                if any(excl in context for excl in exclude_keywords):
-                    continue
-        except Exception:
-            pass
-
-        # Score candidates
-        if user_nominal and user_nominal > 0:
-            difference = abs(normalized - user_nominal)
-            pct_diff = (difference / user_nominal) * 100
-
-            if pct_diff == 0:
-                similarity_score = 10.0
-            elif pct_diff <= 1:
-                similarity_score = 9.0
-            elif pct_diff <= 5:
-                similarity_score = 7.0
-            elif pct_diff <= 10:
-                similarity_score = 5.0
-            elif pct_diff <= 20:
-                similarity_score = 3.0
-            else:
-                similarity_score = max(0.1, 10.0 - (pct_diff / 10))
-
-            total_score = mon_score + similarity_score
-            candidates.append((normalized, total_score))
-        else:
-            score = mon_score
-            if normalized > 50000:
-                score += 0.5
-            candidates.append((normalized, score))
-
-    if candidates:
-        best = max(candidates, key=lambda x: x[1])
-        return best[0]
-
-    return None
-
-
-# ── Main orchestrator ────────────────────────────────────────────────────────
 
 def verify_document_ner(
     ocr_text: str,
@@ -391,16 +277,24 @@ def verify_document_ner(
     user_nominal: Optional[int] = None,
 ) -> dict:
     """
-    Full NER extraction pipeline.
-    Returns dict with keys: kategori, periode, nominal.
+    Pipeline NER penuh.
+
+    Args:
+        ocr_text: Teks hasil OCR (dari modul OCR).
+        user_kategori/periode/nominal: Tidak dipakai oleh model fine-tuned —
+            disisakan untuk backward-compat dengan caller lama.
+
+    Returns:
+        Dict: kategori, periode, nominal (semua string atau None).
     """
-    preprocessed = _preprocess_text_for_ner(ocr_text)
-    entities = _extract_entities_with_ner(preprocessed)
+    entities = _extract_entities(ocr_text)
     logger.info(f"NER found {len(entities)} entities")
 
-    kategori, _ = _extract_category(entities, ocr_text)
-    periode = _extract_period(entities, ocr_text)
-    nominal = _extract_nominal(entities, ocr_text, user_nominal)
+    result = _post_process(entities)
+
+    kategori = result["kategori_final"]
+    periode = result["periode_final"]
+    nominal = result["nominal_final"]
 
     logger.info(f"Extracted -- kategori: {kategori}, periode: {periode}, nominal: {nominal}")
 

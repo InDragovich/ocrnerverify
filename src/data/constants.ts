@@ -1,4 +1,4 @@
-export const CATEGORIES = ['Kebersihan', 'Telepon', 'Listrik', 'Air/Gas'];
+export const CATEGORIES = ['Listrik', 'Telepon', 'Air dan Gas'];
 
 export const MONTHS = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',

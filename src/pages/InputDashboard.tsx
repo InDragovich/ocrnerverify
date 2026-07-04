@@ -6,7 +6,8 @@ import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
 import { CATEGORIES, MONTHS, getTriwulan } from '../data/constants';
 import { Header } from '../components/Header';
-import { FileText, Save, CheckCircle, Upload, Loader2, Trash2, Search } from 'lucide-react';
+import { DetailModal } from '../components/DetailModal';
+import { FileText, Save, CheckCircle, Upload, Loader2, Trash2, Search, Eye } from 'lucide-react';
 import clsx from 'clsx';
 
 function getNominalColor(doc: VerifikasiItem): string {
@@ -41,6 +42,7 @@ export const InputDashboard: React.FC = () => {
     const [loadingDocs, setLoadingDocs] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [perPage, setPerPage] = useState(10);
+    const [detailDoc, setDetailDoc] = useState<VerifikasiItem | null>(null);
 
     useEffect(() => {
         const currentUser = authService.getCurrentUser();
@@ -333,12 +335,18 @@ export const InputDashboard: React.FC = () => {
                                                 )}
                                             </td>
                                             <td className="p-4 text-center">
-                                                {doc.status_verifikasi === 'menunggu' ? (
-                                                    <button onClick={() => handleDelete(doc.id)} title="Hapus"
-                                                        className="p-1.5 hover:bg-red-100 text-red-500 rounded-lg transition-colors">
-                                                        <Trash2 size={16} />
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button onClick={() => setDetailDoc(doc)} title="Lihat Detail"
+                                                        className="p-1.5 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors">
+                                                        <Eye size={16} />
                                                     </button>
-                                                ) : <span className="text-xs text-gray-400">-</span>}
+                                                    {doc.status_verifikasi === 'menunggu' && (
+                                                        <button onClick={() => handleDelete(doc.id)} title="Hapus"
+                                                            className="p-1.5 hover:bg-red-100 text-red-500 rounded-lg transition-colors">
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -353,6 +361,10 @@ export const InputDashboard: React.FC = () => {
                     </div>
                 </div>
             </main>
+
+            {detailDoc && (
+                <DetailModal doc={detailDoc} onClose={() => setDetailDoc(null)} readOnly />
+            )}
         </div>
     );
 };

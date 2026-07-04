@@ -1,5 +1,5 @@
 """
-SIM-LPU OCR-NER Microservice
+ocrnerverify OCR-NER Microservice
 
 Setup: pip install -r requirements.txt
 Run:   python main.py
@@ -7,6 +7,7 @@ Run:   python main.py
 
 import os
 import re
+import time
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -43,11 +44,23 @@ class EntitiesSchema(BaseModel):
     nominal: Optional[str] = None
 
 
+class OcrOutputSchema(BaseModel):
+    """Output modul OCR sesuai Tabel IV-10 — input untuk NER."""
+    nama_dokumen: str
+    metode_ekstraksi: str  # "OCR" | "Teks PDF"
+    teks_ekstraksi: str
+    waktu_pemrosesan: float  # detik
+
+
 class OcrNerResponse(BaseModel):
-    text_ocr: str
+    # Field utama
+    text_ocr: str            # = ocr.teks_ekstraksi (alias backward-compat)
     entities: EntitiesSchema
-    status: str  # "success" | "partial_success" | "failed"
+    status: str              # "success" | "partial_success" | "failed"
     error_message: Optional[str] = None
+    # Detail modul OCR
+    ocr: Optional[OcrOutputSchema] = None
+    waktu_total: Optional[float] = None  # detik, OCR + NER
 
 
 # ── FastAPI app ──────────────────────────────────────────────────────────────
@@ -62,7 +75,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SIM-LPU OCR-NER Service",
+    title="ocrnerverify OCR-NER Service",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -106,9 +119,11 @@ async def extract(
 
     logger.info(f"Processing: {filename} ({len(file_bytes)} bytes)")
 
+    t_start = time.perf_counter()
+
     # ── Phase 1: OCR ─────────────────────────────────────────────────────
     try:
-        text_ocr = extract_text_from_file(file_bytes, filename)
+        ocr_result = extract_text_from_file(file_bytes, filename, kategori=kategori)
     except Exception as e:
         logger.exception("OCR phase failed")
         return OcrNerResponse(
@@ -116,7 +131,11 @@ async def extract(
             entities=EntitiesSchema(),
             status="failed",
             error_message=f"OCR gagal: {str(e)}",
+            waktu_total=round(time.perf_counter() - t_start, 3),
         )
+
+    text_ocr = ocr_result["teks_ekstraksi"]
+    ocr_schema = OcrOutputSchema(**ocr_result)
 
     if not text_ocr.strip():
         return OcrNerResponse(
@@ -124,6 +143,8 @@ async def extract(
             entities=EntitiesSchema(),
             status="failed",
             error_message="Tidak ada teks yang dapat diekstrak dari dokumen.",
+            ocr=ocr_schema,
+            waktu_total=round(time.perf_counter() - t_start, 3),
         )
 
     # ── Phase 2: NER ─────────────────────────────────────────────────────
@@ -146,6 +167,8 @@ async def extract(
             entities=EntitiesSchema(),
             status="partial_success",
             error_message=f"NER gagal: {str(e)}",
+            ocr=ocr_schema,
+            waktu_total=round(time.perf_counter() - t_start, 3),
         )
 
     # ── Determine status ─────────────────────────────────────────────────
@@ -169,6 +192,8 @@ async def extract(
         entities=EntitiesSchema(**entities_dict),
         status=status,
         error_message=error_message,
+        ocr=ocr_schema,
+        waktu_total=round(time.perf_counter() - t_start, 3),
     )
 
 

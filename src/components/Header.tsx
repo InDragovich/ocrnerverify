@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-3">
-                        <h1 className="text-lg font-bold text-gray-800">SIM-LPU</h1>
+                        <h1 className="text-lg font-bold text-gray-800">ocrnerverify</h1>
                         <span className="text-gray-300 hidden sm:inline">|</span>
                         <span className="text-sm text-gray-500 hidden sm:inline">Verifikasi Biaya Rutin</span>
                     </div>
