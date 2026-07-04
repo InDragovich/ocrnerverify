@@ -55,4 +55,4 @@ export const USERS: User[] = [
     },
 ];
 
-export const CATEGORIES = ['Kebersihan', 'Telepon', 'Listrik', 'Air', 'Gas'];
+export const CATEGORIES = ['Listrik', 'Telepon', 'Air dan Gas'];

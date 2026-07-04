@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 
 class MockOcrNerController extends Controller
 {
-    private array $categories = ['Kebersihan', 'Telepon', 'Listrik', 'Air', 'Gas'];
+    private array $categories = ['Listrik', 'Telepon', 'Air dan Gas'];
     private array $months = [
         'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
         'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',

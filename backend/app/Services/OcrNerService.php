@@ -122,7 +122,7 @@ class OcrNerService
 
     private function guessCategory(string $fileName): string
     {
-        $categories = ['Kebersihan', 'Telepon', 'Listrik', 'Air', 'Gas'];
+        $categories = ['Listrik', 'Telepon', 'Air dan Gas'];
         $fileNameLower = strtolower($fileName);
         foreach ($categories as $cat) {
             if (str_contains($fileNameLower, strtolower($cat))) {

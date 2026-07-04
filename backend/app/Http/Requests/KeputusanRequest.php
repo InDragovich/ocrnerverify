@@ -19,7 +19,7 @@ class KeputusanRequest extends FormRequest
             'catatan_verifikator' => 'nullable|string|max:2000',
             'koreksi_entitas' => 'nullable|array',
             'koreksi_entitas.nominal' => 'nullable|numeric|min:0',
-            'koreksi_entitas.kategori' => 'nullable|string|in:Kebersihan,Telepon,Listrik,Air/Gas',
+            'koreksi_entitas.kategori' => 'nullable|string|in:Listrik,Telepon,Air dan Gas',
             'koreksi_entitas.periode' => 'nullable|string|max:50',
         ];
     }

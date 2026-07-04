@@ -1,4 +1,4 @@
-# SIM-LPU — Sistem Verifikasi Biaya Rutin
+# ocrnerverify — Sistem Verifikasi Biaya Rutin
 
 Web application untuk verifikasi dokumen laporan subsidi operasional (biaya rutin) dengan integrasi OCR dan NER.
 
@@ -9,6 +9,54 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 ---
 
 ## Changelog
+
+### v1.7.0 — Real OCR Pipeline, Fine-tuned NER, Rebrand "ocrnerverify" (2026-06-12)
+
+**Rebranding:**
+- Nama aplikasi diubah dari "SIM-LPU" menjadi **ocrnerverify** di seluruh tampilan: navbar (`Header.tsx`), title browser tab (`index.html`), FastAPI Swagger docs (`main.py`), dan judul README. Nama folder & repo GitHub tetap `SIM-LPU` (identifier teknis saja, tidak terlihat user).
+
+**OCR Pipeline — Total Rewrite (port dari notebook penelitian):**
+- **PDF Digital bypass**: PDF dengan text-layer di-extract langsung via `pdftotext` (Poppler). Skip OCR penuh → ~0% error rate, jauh lebih cepat.
+- **PSM dinamis per kategori**: `listrik=4`, `air=3`, `telepon=4` (dari `kategori` form). Fallback PSM 3 otomatis kalau hasil utama < 100 alnum.
+- **OSD + Skew correction**: orientation detection Tesseract + fallback bandingkan confidence normal vs 180°, lalu skew correction via projection profile (search −15° s.d. +15°).
+- **Adaptive resize**: probe Tesseract estimasi median tinggi karakter; upscale kalau < 25px (target 30px, max 3×).
+- **Bilateral filter denoise** (edge-preserving, ganti Gaussian).
+- **Black Top-Hat watermark suppression**: kernel ellipse skala-adaptif (7/9/15/25/21 px berdasarkan resolusi).
+- **Otsu binarization** setelah BlackHat.
+- **Confidence filter** per token: drop token non-alfanumerik dengan conf < 50, scrub karakter blacklist (`$`, `@`, `¢`, dll).
+- **Garbage line removal** 4 aturan (sebelumnya 3).
+
+**OCR Output — Schema Baru (sesuai Tabel IV-10):**
+- Modul OCR sekarang return dict 4 field: `nama_dokumen`, `metode_ekstraksi` (`"OCR"` / `"Teks PDF"`), `teks_ekstraksi`, `waktu_pemrosesan`.
+- Response API `/extract` tambah field `ocr` (detail OCR) + `waktu_total` (OCR + NER).
+- Top-level `text_ocr` dipertahankan sebagai alias `ocr.teks_ekstraksi` (backward compat).
+
+**NER — Ganti ke Model Fine-tuned:**
+- Model lama `cahya/bert-base-indonesian-NER` (generic, label ORG/DAT/MON) **diganti** dengan model fine-tuned `ner_indobert_p2_best` (BertForTokenClassification, label `B/I-KATEGORI`, `B/I-PERIODE`, `B/I-NOMINAL`).
+- Logika ekstraksi disederhanakan: aggregation_strategy "simple" langsung keluar entity group `KATEGORI` / `PERIODE` / `NOMINAL` — tidak perlu mapping ORG→kategori dll.
+- Normalisasi port dari `Notebook 2 — Demo (rev2)`: `_normalize_period` (dukung `MEI 2025`, `10/2025`, `15-10-2025`, `OKT24`, typo `OKOTBER`→`OKTOBER`), `_normalize_rupiah` (extract digit), `_map_category_from_text` via `CATEGORY_PATTERNS` regex.
+- Model file (~495MB safetensors) di `ocr-ner-service/models/ner_indobert/` — **di-gitignore** karena terlalu besar.
+- Default `NER_MODEL_NAME=./models/ner_indobert` (lokal). Override dengan HuggingFace Hub repo id kalau mau deploy via cloud.
+
+**Kategori — Simplifikasi:**
+- Hapus kategori **"Kebersihan"** (tidak dipakai).
+- Rename **"Air/Gas"** → **"Air dan Gas"** (match output NER).
+- Daftar final: `Listrik`, `Telepon`, `Air dan Gas`.
+- File ter-update: `constants.ts`, `mockData.ts`, `KeputusanRequest.php`, `OcrNerService.php`, `MockOcrNerController.php`, `VerifikasiSeeder.php`.
+
+**Operator — View-Only Detail:**
+- `DetailModal` tambah prop `readOnly?: boolean`. Saat true, tab "Keputusan" disembunyikan.
+- Tabel "Daftar Data Saya" di `InputDashboard` tambah tombol **Eye** (👁) di kolom Aksi — buka detail dalam mode read-only: lihat lampiran + teks OCR + perbandingan entitas NER, tanpa bisa simpan keputusan atau koreksi entitas.
+
+**File Berubah:**
+- `ocr-ner-service/ocr/extractor.py` — rewrite pipeline OCR penuh.
+- `ocr-ner-service/ner/extractor.py` — rewrite untuk model fine-tuned + normalisasi notebook.
+- `ocr-ner-service/main.py` — schema response baru (`OcrOutputSchema`, `waktu_ocr`, `waktu_total`).
+- `ocr-ner-service/.gitignore` — exclude `models/`.
+- `ocr-ner-service/models/ner_indobert/` — folder baru (lokal, tidak di-commit).
+- `src/components/Header.tsx`, `index.html`, `README.md` — rebrand title.
+- `src/components/DetailModal.tsx` — prop `readOnly`.
+- `src/pages/InputDashboard.tsx` — tombol Eye + DetailModal read-only.
 
 ### v1.0.0 — Initial Frontend (2025-02-05)
 - Setup project React + Vite + Tailwind CSS
@@ -286,7 +334,24 @@ php artisan serve
 
 #### 6. Setup & Jalankan OCR-NER Service
 
-Sejak v1.4.0, verifikasi otomatis menggunakan OCR-NER asli (bukan mock).
+Sejak v1.4.0 verifikasi otomatis pakai OCR-NER asli. Sejak v1.7.0 NER pakai **model fine-tuned lokal** (bukan download dari HuggingFace).
+
+**6a. Letakkan model NER ke folder lokal:**
+
+Model `ner_indobert_p2_best` (~495MB) **tidak masuk git** karena terlalu besar. Salin manual ke folder berikut:
+```
+ocr-ner-service/
+└── models/
+    └── ner_indobert/
+        ├── config.json
+        ├── model.safetensors
+        ├── tokenizer.json
+        └── tokenizer_config.json
+```
+
+> **Sumber model**: hasil training di `Notebook 1 — Fine-tuning IndoBERT`. Kalau belum punya, minta master copy dari pemilik repo atau jalankan training ulang.
+
+**6b. Install Python dependencies & jalankan service:**
 
 Buka **Terminal 3**:
 ```bash
@@ -298,7 +363,7 @@ pip install -r requirements.txt
 # Jalankan service
 python main.py
 # Service berjalan di http://localhost:5001
-# Pertama kali: download model IndoBERT ~443MB
+# Startup: print path Tesseract/Poppler, load NER, warm-up inference
 ```
 
 Pastikan `.env` di `backend/` sudah diset:
@@ -308,6 +373,8 @@ OCR_NER_USE_MOCK=false
 ```
 
 > **Catatan:** Jika ingin testing tanpa OCR-NER, set `OCR_NER_USE_MOCK=true` di `backend/.env`.
+>
+> **Deploy ke cloud (Railway/dll):** karena `models/` di-gitignore, opsi distribusi: (1) upload model ke HuggingFace Hub private repo lalu set `NER_MODEL_NAME=<user>/<repo>` + `HF_TOKEN=hf_xxx`, atau (2) mount volume, atau (3) download dari cloud bucket di entrypoint.
 
 #### 7. Setup & Jalankan Frontend
 
@@ -442,8 +509,11 @@ php artisan migrate:fresh --seed
 ### Verifikasi otomatis tidak berjalan (stuck di "Memproses...")
 **Solusi:** Pastikan OCR-NER service berjalan (cek `http://localhost:5001/health`). Jika ingin testing tanpa OCR-NER, set `OCR_NER_USE_MOCK=true` di `backend/.env`. Jika masih stuck, restart backend server (`php artisan serve`).
 
-### OCR-NER service error "Model not loaded"
-**Solusi:** Pastikan `python main.py` berhasil download model IndoBERT (~443MB). Cek koneksi internet dan pastikan dependencies terinstall (`pip install -r requirements.txt`). Untuk GPU support: `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
+### OCR-NER service error "NER model tidak ditemukan"
+**Solusi:** Sejak v1.7.0 model NER pakai file lokal, bukan download dari HuggingFace. Pastikan folder `ocr-ner-service/models/ner_indobert/` berisi 4 file: `config.json`, `model.safetensors`, `tokenizer.json`, `tokenizer_config.json`. Lihat langkah **6a** di atas. Untuk GPU support: `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
+
+### OCR-NER error "Tesseract not found" / "pdftotext not found"
+**Solusi:** Install Tesseract OCR (dengan bahasa Indonesia `ind`) dan Poppler. Default path Windows: `C:\Program Files\Tesseract-OCR\` dan `C:\Program Files\poppler-*\Library\bin\`. Service auto-detect dari PATH atau lokasi standar — kalau lokasi non-standar, set env `TESSERACT_CMD` dan `POPPLER_PATH`.
 
 ### Port 8000 sudah digunakan
 **Solusi:** Gunakan port lain:
@@ -479,9 +549,9 @@ npm install
 | `superadmin` | `password` | Super Admin | - |
 
 ### Panduan Singkat per Role:
-- **Operator** (`input_medan`, dll): Input data verifikasi biaya rutin + upload lampiran
-- **Verifikator** (`verificator`): Lihat semua data, jalankan verifikasi otomatis (batch), beri keputusan manual
-- **Super Admin** (`superadmin`): Semua fitur Verifikator + kelola user + lihat audit logs + dashboard statistik
+- **Operator** (`input_medan`, dll): Input data verifikasi biaya rutin (kategori `Listrik` / `Telepon` / `Air dan Gas`, periode, nominal, tahun) + upload lampiran PDF/JPG/PNG. Bisa klik tombol Eye 👁 di tabel "Daftar Data Saya" untuk lihat detail dokumennya — lampiran, teks OCR, dan perbandingan entitas NER (read-only, tidak bisa ubah keputusan).
+- **Verifikator** (`verificator`): Drill-down dashboard Regional → KCU → KPC → Dokumen. Jalankan **Verifikasi Otomatis** (batch) → backend kirim file ke OCR-NER service → bandingkan hasil dengan input operator. Bisa beri **Keputusan Manual** (Sesuai/Tidak Sesuai) + catatan, dan koreksi entitas (kategori/periode/nominal) di tab Keputusan.
+- **Super Admin** (`superadmin`): Semua fitur Verifikator + kelola user (CRUD) + lihat audit logs + dashboard statistik global.
 
 ---
 
@@ -564,9 +634,11 @@ SIM-LPU/
 ├── ocr-ner-service/                       # OCR-NER Microservice (FastAPI)
 │   ├── main.py                            # FastAPI app + schemas + config
 │   ├── ocr/
-│   │   └── extractor.py                   # Tesseract OCR + preprocessing
+│   │   └── extractor.py                   # Tesseract OCR full pipeline (OSD/skew/resize/denoise/BlackHat/Otsu + PSM dinamis + PDF Digital bypass)
 │   ├── ner/
-│   │   └── extractor.py                   # IndoBERT NER + model loader
+│   │   └── extractor.py                   # NER fine-tuned IndoBERT + normalisasi kategori/periode/nominal
+│   ├── models/                            # Model NER lokal (di-gitignore)
+│   │   └── ner_indobert/                  # config.json, model.safetensors, tokenizer.json, tokenizer_config.json
 │   ├── requirements.txt                   # Python dependencies
 │   └── .env.example                       # Env vars opsional
 │
@@ -597,9 +669,15 @@ FRONTEND_URL=http://localhost:5173
 ```
 # TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
 # POPPLER_PATH=C:\Program Files\poppler-25.07.0\Library\bin
-# NER_MODEL_NAME=cahya/bert-base-indonesian-NER
+# NER_MODEL_NAME=./models/ner_indobert     # default: folder lokal; bisa override ke HuggingFace repo id
+# NER_MAX_CHARS=2000                       # batas char OCR dikirim ke NER (default 2000)
+# OCR_DPI=300                              # DPI konversi PDF -> image
+# OCR_LANG=ind+eng                         # bahasa Tesseract
 # HOST=0.0.0.0
 # PORT=5001
+# MAX_FILE_SIZE_MB=10
+# LOG_LEVEL=INFO
+# HF_TOKEN=hf_xxx                          # hanya jika NER_MODEL_NAME = private HF repo
 ```
 
 ---
