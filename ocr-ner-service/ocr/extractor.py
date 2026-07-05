@@ -2,8 +2,8 @@
 OCR text extraction pipeline — ported from PytesseractOCR_with_Testing.ipynb.
 
 Pipeline: Konversi → OSD → Skew → Grayscale → Resize (adaptive) →
-Denoise (bilateral) → Black Top-Hat → Otsu → Tesseract (PSM dinamis,
-fallback PSM 3, confidence filter) → Post-processing.
+Black Top-Hat (kernel tunggal 25) → Otsu → Tesseract (PSM dinamis,
+fallback PSM 3, confidence + whitelist filter) → Post-processing whitespace.
 
 PDF text-extractable (PDF Digital) di-bypass: ekstrak langsung via pdftotext.
 """
@@ -13,11 +13,11 @@ import os
 import re
 import glob
 import time
+import string
 import shutil
 import logging
 import tempfile
 import subprocess
-import unicodedata
 
 import cv2
 import numpy as np
@@ -86,16 +86,23 @@ CATEGORY_PSM: dict[str, int] = {
 PSM_DEFAULT = 3
 OSD_FALLBACK_PSM = 6
 
-# OCR & garbage detection
+# OCR filter (closed-world whitelist berbasis audit ground truth 42 dokumen)
 OCR_MIN_ALNUM = 100
 OCR_TOKEN_CONF_MIN = 50
-OCR_CHAR_BLACKLIST = frozenset({
-    "$", "@", "¢",
-    "£", "€", "¥", "₩",
-    "§", "©", "®", "™",
+OCR_CHAR_WHITELIST = frozenset(
+    string.ascii_letters       # A-Za-z
+    + string.digits            # 0-9
+    + " \n\t"                  # whitespace
+    + ".,:-/()"                # 7 punctuation struktural (universal di GT)
+    + '"'                      # double quote ASCII
+    + "&"                      # ampersand: "POS & GIRO"
+    + "³"                      # superscript 3: M³ untuk struk air PAB
+)
+# Pre-normalisasi curly quotes -> ASCII sebelum scrub whitelist.
+SMART_QUOTE_MAP = str.maketrans({
+    "“": '"', "”": '"',   # “ ” -> "
+    "‘": "'", "’": "'",   # ‘ ’ -> '
 })
-GARBAGE_ALNUM_RATIO = 0.4
-GARBAGE_SINGLE_CHAR_RATIO = 0.6
 
 # Orientation / skew
 OSD_MIN_CONFIDENCE = 2.0
@@ -115,18 +122,10 @@ RESIZE_PROBE_PSM = 6
 RESIZE_PROBE_CONF_MIN = 40
 HIGH_LAP_VAR_THRESHOLD = 1000.0
 
-# Denoise
-BILATERAL_DIAMETER = 5
-BILATERAL_SIGMA_COLOR = 50
-BILATERAL_SIGMA_SPACE = 50
-
-# Black Top-Hat
-TOPHAT_KERNEL_XS = 7
-TOPHAT_KERNEL_SM = 9
-TOPHAT_KERNEL_MIN = 15
-TOPHAT_KERNEL_MID = 25
-TOPHAT_KERNEL_MAX = 21
-TOPHAT_RESIDUE_FLOOR = 25
+# Black Top-Hat — kernel tunggal (ablation eval_2026-06-27_152109: k=25
+# rata-rata CER terendah pada 24 dokumen). Adaptive resize sudah menormalkan
+# tinggi karakter ~30 px, jadi kernel tunggal cukup.
+TOPHAT_KERNEL = 25
 
 
 # ── Category detection ──────────────────────────────────────────────────────
@@ -340,37 +339,23 @@ def _adaptive_resize(img_gray: np.ndarray) -> np.ndarray:
     return cv2.resize(img_gray, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
 
 
-# ── Denoise (bilateral) ─────────────────────────────────────────────────────
-
-
-def _denoise_bilateral(gray: np.ndarray) -> np.ndarray:
-    return cv2.bilateralFilter(
-        gray, BILATERAL_DIAMETER, BILATERAL_SIGMA_COLOR, BILATERAL_SIGMA_SPACE
-    )
-
-
 # ── Watermark suppression (Black Top-Hat) ───────────────────────────────────
 
 
-def _scale_tophat_kernel(shape: tuple[int, int]) -> int:
-    short_side = min(shape[:2])
-    if short_side < 600:
-        return TOPHAT_KERNEL_XS
-    if short_side < 800:
-        return TOPHAT_KERNEL_SM
-    if short_side < 1000:
-        return TOPHAT_KERNEL_MIN
-    if short_side < 2000:
-        return TOPHAT_KERNEL_MID
-    return TOPHAT_KERNEL_MAX
-
-
 def _suppress_watermark_blackhat(gray: np.ndarray) -> np.ndarray:
-    k = _scale_tophat_kernel(gray.shape)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    """Tekan watermark/background gelap besar via morphological closing.
+
+    Closing dengan kernel besar mengisi stroke teks tipis tetapi
+    mempertahankan watermark besar. Selisih (background - gray)
+    menghasilkan citra dengan watermark ditekan; di-invert agar
+    teks tetap gelap (foreground = hitam). Residue-floor threshold
+    sengaja tidak dipakai supaya Otsu bekerja pada distribusi alami.
+    """
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (TOPHAT_KERNEL, TOPHAT_KERNEL)
+    )
     background = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
     diff = cv2.subtract(background, gray)
-    _, diff = cv2.threshold(diff, TOPHAT_RESIDUE_FLOOR, 0, cv2.THRESH_TOZERO)
     return cv2.bitwise_not(diff)
 
 
@@ -378,12 +363,21 @@ def _suppress_watermark_blackhat(gray: np.ndarray) -> np.ndarray:
 
 
 def _ocr_with_conf_filter(img: np.ndarray, lang: str, config: str) -> str:
+    """OCR + normalisasi + scrub whitelist + drop token simbol low-confidence.
+
+    Pipeline per token:
+      1. Normalisasi smart-quote (curly) -> ASCII via SMART_QUOTE_MAP.
+      2. Scrub karakter di luar OCR_CHAR_WHITELIST (closed-world dari GT).
+      3. Drop token non-alnum dengan conf < OCR_TOKEN_CONF_MIN.
+      4. Susun ulang baris berdasarkan (block_num, par_num, line_num).
+    """
     data = pytesseract.image_to_data(
         img, lang=lang, config=config, output_type=pytesseract.Output.DICT
     )
     lines: dict[tuple[int, int, int], list[str]] = {}
     for i_t, raw in enumerate(data["text"]):
-        token = "".join(c for c in raw.strip() if c not in OCR_CHAR_BLACKLIST)
+        normalized = raw.strip().translate(SMART_QUOTE_MAP)
+        token = "".join(c for c in normalized if c in OCR_CHAR_WHITELIST)
         if not token:
             continue
         try:
@@ -411,46 +405,6 @@ def _extract_text_tesseract(img: np.ndarray, psm: int, dpi: int) -> str:
     return text
 
 
-# ── Post-processing: garbage line removal ───────────────────────────────────
-
-
-def _clean_garbage_lines(text: str) -> str:
-    cleaned_lines = []
-    for line in text.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            cleaned_lines.append(line)
-            continue
-
-        normalized = unicodedata.normalize("NFKC", stripped)
-
-        if len(normalized) <= 2 and not normalized.isdigit():
-            continue
-
-        alnum_count = sum(1 for c in normalized if c.isalnum())
-        if alnum_count / len(normalized) < GARBAGE_ALNUM_RATIO and len(normalized) < 20:
-            continue
-
-        words = normalized.split()
-        if len(words) >= 3:
-            single_ratio = sum(1 for w in words if len(w) == 1) / len(words)
-            if single_ratio > GARBAGE_SINGLE_CHAR_RATIO and len(normalized) < 30:
-                continue
-
-        non_sym = (
-            normalized.replace("|", "").replace("-", "").replace("=", "")
-            .replace("’", "").replace("?", "").strip()
-        )
-        if len(non_sym) < 3 and len(normalized) > 2:
-            continue
-
-        cleaned_lines.append(line)
-
-    result = "\n".join(cleaned_lines)
-    result = re.sub(r"\n\s*\n+", "\n\n", result)
-    return result.strip()
-
-
 # ── Full per-page pipeline ──────────────────────────────────────────────────
 
 
@@ -464,14 +418,20 @@ def _process_page(pil_img: Image.Image, psm: int, dpi: int) -> str:
         gray = img_np
 
     gray = _adaptive_resize(gray)
-    gray = _denoise_bilateral(gray)
     gray = _suppress_watermark_blackhat(gray)
     _, binarized = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    text = _extract_text_tesseract(binarized, psm=psm, dpi=dpi)
+    return _extract_text_tesseract(binarized, psm=psm, dpi=dpi)
+
+
+# ── Post-processing whitespace ──────────────────────────────────────────────
+
+
+def _normalize_whitespace(text: str) -> str:
     text = re.sub(r" +", " ", text)
     text = re.sub(r" +\n", "\n", text)
-    return text
+    text = re.sub(r"\n\s*\n+", "\n\n", text)
+    return text.strip()
 
 
 # ── Public entrypoint ───────────────────────────────────────────────────────
@@ -491,7 +451,7 @@ def extract_text_from_file(
       - waktu_pemrosesan: float (detik, total dari awal sampai akhir)
 
     PDF text-extractable di-bypass via pdftotext ("Teks PDF").
-    Sisanya jalan pipeline OCR penuh (OSD/skew/resize/denoise/BlackHat/Otsu/Tesseract).
+    Sisanya jalan pipeline OCR penuh (OSD/skew/resize/BlackHat/Otsu/Tesseract).
     PSM dipilih dari `kategori` (form) atau di-deteksi dari nama file.
     """
     t_start = time.perf_counter()
@@ -512,7 +472,7 @@ def extract_text_from_file(
         digital_text = _extract_pdf_digital(file_bytes)
         if digital_text is not None:
             logger.info(f"{filename}: PDF Digital (pdftotext), {len(digital_text)} chars")
-            cleaned = _clean_garbage_lines(digital_text)
+            cleaned = _normalize_whitespace(digital_text)
             return {
                 "nama_dokumen": filename,
                 "metode_ekstraksi": "Teks PDF",
@@ -536,7 +496,7 @@ def extract_text_from_file(
         pages_text.append(text)
 
     raw_text = "\n".join(pages_text)
-    cleaned = _clean_garbage_lines(raw_text)
+    cleaned = _normalize_whitespace(raw_text)
     logger.info(f"OCR complete: {len(raw_text)} chars raw -> {len(cleaned)} chars cleaned")
 
     return {
