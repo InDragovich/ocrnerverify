@@ -24,7 +24,7 @@ class UserSeeder extends Seeder
                 'username' => 'input_medan',
                 'password' => 'password',
                 'role' => 'operator',
-                'region' => 'I. MEDAN',
+                'region' => 'Medan',
                 'kcu' => 'KCU MEDAN',
                 'kcp' => 'MEDANPAYAGELI',
             ],

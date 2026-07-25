@@ -14,7 +14,7 @@ export interface VerifikasiItem {
     nominal_pelaporan: number;
     lampiran_path: string;
     lampiran_nama_asli: string;
-    status_verifikasi: 'menunggu' | 'diproses' | 'selesai' | 'gagal';
+    status_verifikasi: 'menunggu' | 'diproses' | 'menunggu_review' | 'selesai' | 'gagal';
     hasil_kesesuaian: 'sesuai' | 'tidak_sesuai' | 'belum_ditentukan';
     catatan_verifikator: string | null;
     hasil_ekstraksi_teks: string | null;
@@ -39,6 +39,7 @@ export interface StatsResponse {
     status_verifikasi: {
         menunggu: number;
         diproses: number;
+        menunggu_review: number;
         selesai: number;
         gagal: number;
     };

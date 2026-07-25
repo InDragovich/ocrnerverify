@@ -64,4 +64,27 @@ class User extends Authenticatable
     {
         return $this->role === 'super_admin';
     }
+
+    /**
+     * Batas wilayah kerja verifikator, sebagai pasangan kolom => nilai.
+     *
+     * Bertingkat dan opsional: kolom yang dikosongkan berarti "semua" pada
+     * level tersebut. Region kosong = semua wilayah; region terisi tapi KCU
+     * kosong = seluruh KCU dalam region itu; begitu seterusnya.
+     * Array kosong berarti tanpa pembatasan sama sekali.
+     *
+     * @return array<string, string>
+     */
+    public function wilayahScope(): array
+    {
+        if (!$this->isVerifikator()) {
+            return [];
+        }
+
+        return array_filter([
+            'regional' => $this->region,
+            'kcu' => $this->kcu,
+            'kpc' => $this->kcp,
+        ], fn ($value) => filled($value));
+    }
 }

@@ -78,12 +78,18 @@ class ProcessVerifikasiJob implements ShouldQueue
                 $matchResult['catatan'] .= ' (Catatan: Sebagian entitas tidak terdeteksi oleh NER)';
             }
 
-            // Update record
+            // Update record.
+            // Hasil "sesuai" diloloskan otomatis (auto-approve, status selesai) namun
+            // masih dapat dioverride verifikator. Hasil "tidak_sesuai" tidak difinalkan;
+            // masuk antrean "menunggu_review" agar wajib ditinjau verifikator.
+            // verifikator_id sengaja dikosongkan karena keputusan ini dihasilkan sistem,
+            // bukan manusia; atribusi manusia diisi saat keputusan manual.
+            $isSesuai = $matchResult['hasil_kesesuaian'] === 'sesuai';
             $verifikasi->hasil_kesesuaian = $matchResult['hasil_kesesuaian'];
             $verifikasi->catatan_verifikator = $matchResult['catatan'];
-            $verifikasi->status_verifikasi = 'selesai';
-            $verifikasi->verifikator_id = $this->verifikatorId;
-            $verifikasi->verified_at = now();
+            $verifikasi->status_verifikasi = $isSesuai ? 'selesai' : 'menunggu_review';
+            $verifikasi->verifikator_id = null;
+            $verifikasi->verified_at = $isSesuai ? now() : null;
             $verifikasi->save();
 
             AuditService::log(

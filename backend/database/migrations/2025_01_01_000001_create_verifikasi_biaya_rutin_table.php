@@ -22,7 +22,7 @@ return new class extends Migration
             $table->bigInteger('nominal_pelaporan')->unsigned();
             $table->string('lampiran_path', 500);
             $table->string('lampiran_nama_asli', 255);
-            $table->string('status_verifikasi', 20)->default('menunggu'); // menunggu, diproses, selesai, gagal
+            $table->string('status_verifikasi', 20)->default('menunggu'); // menunggu, diproses, menunggu_review, selesai, gagal
             $table->string('hasil_kesesuaian', 20)->default('belum_ditentukan'); // sesuai, tidak_sesuai, belum_ditentukan
             $table->text('catatan_verifikator')->nullable();
             $table->longText('hasil_ekstraksi_teks')->nullable();

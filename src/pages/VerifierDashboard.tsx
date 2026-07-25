@@ -35,6 +35,10 @@ const SUB_LABELS: Record<string, string> = {
     kcu: 'KPC',
 };
 
+// Status yang boleh diproses ulang oleh verifikasi otomatis (sinkron dengan
+// filter di BatchVerifikasiController@batchVerify).
+const VERIFIABLE_STATUSES: string[] = ['menunggu', 'gagal', 'diproses'];
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function getNominalColor(doc: VerifikasiItem): string {
     if (doc.status_verifikasi === 'menunggu' || doc.status_verifikasi === 'diproses') {
@@ -136,7 +140,11 @@ const SummaryTable: React.FC<SummaryTableProps> = ({ data, level, loading, onDri
                                         </div>
                                     </td>
                                     <td className="p-4 text-center">
-                                        {item.menunggu + item.gagal > 0 ? (
+                                        {total === 0 ? (
+                                            <span className="inline-block text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">
+                                                Belum Ada Dokumen
+                                            </span>
+                                        ) : item.menunggu + item.gagal > 0 ? (
                                             <span className="inline-block text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
                                                 Belum Verifikasi ({item.menunggu + item.gagal})
                                             </span>
@@ -294,6 +302,18 @@ export const VerifierDashboard: React.FC = () => {
         setSelected(new Set());
     };
 
+    // Dropdown status memakai nilai gabungan "<status>|<hasil>" agar sama persis
+    // dengan badge di kolom Status Verifikasi (Sesuai / Tidak Sesuai / dst).
+    const statusValue = filters.hasil_kesesuaian
+        ? `${filters.status_verifikasi}|${filters.hasil_kesesuaian}`
+        : filters.status_verifikasi;
+
+    const handleStatusFilterChange = (value: string) => {
+        const [status = '', hasil = ''] = value.split('|');
+        setFilters(prev => ({ ...prev, status_verifikasi: status, hasil_kesesuaian: hasil, page: 1 }));
+        setSelected(new Set());
+    };
+
     const handlePageChange = (page: number) => {
         setFilters(prev => ({ ...prev, page }));
         setSelected(new Set());
@@ -306,7 +326,7 @@ export const VerifierDashboard: React.FC = () => {
 
     // ─── Selection (Level 4) ─────────────────────────────────────────────────
     const selectableIds = documents
-        .filter(d => d.status_verifikasi === 'menunggu' || d.status_verifikasi === 'gagal' || d.status_verifikasi === 'diproses')
+        .filter(d => VERIFIABLE_STATUSES.includes(d.status_verifikasi))
         .map(d => d.id);
 
     const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
@@ -330,9 +350,41 @@ export const VerifierDashboard: React.FC = () => {
     };
 
     // ─── Batch verify (Level 4) ──────────────────────────────────────────────
+    // Ambil semua dokumen yang layak diverifikasi pada scope + filter saat ini
+    // (lintas halaman), dipakai saat verifikator tidak mencentang apa pun.
+    const fetchAllEligibleIds = async (): Promise<number[]> => {
+        const result = await verifikasiService.getList({
+            ...filters,
+            page: 1,
+            per_page: 1000,
+            regional: drillPath.regional,
+            kcu: drillPath.kcu,
+            kpc: drillPath.kpc,
+        });
+        return result.data
+            .filter(d => VERIFIABLE_STATUSES.includes(d.status_verifikasi))
+            .map(d => d.id);
+    };
+
     const handleBatchVerify = async () => {
-        if (selected.size === 0) return;
-        const ids = Array.from(selected);
+        let ids: number[];
+        if (selected.size > 0) {
+            ids = Array.from(selected);
+        } else {
+            setBatchMsg('');
+            try {
+                ids = await fetchAllEligibleIds();
+            } catch {
+                setBatchMsg('Gagal memproses verifikasi: tidak dapat memuat daftar dokumen.');
+                setTimeout(() => setBatchMsg(''), 8000);
+                return;
+            }
+            if (ids.length === 0) {
+                setBatchMsg('Tidak ada dokumen yang perlu diverifikasi pada tampilan ini.');
+                setTimeout(() => setBatchMsg(''), 5000);
+                return;
+            }
+        }
         setBatchProcessing(true);
         setBatchIds(ids);
         setBatchMsg('');
@@ -491,7 +543,8 @@ export const VerifierDashboard: React.FC = () => {
                     </div>
                 )}
 
-                {/* Filters */}
+                {/* Filters — hanya di level dokumen (level 4) */}
+                {isDocLevel && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
                     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                         <div className="flex items-center gap-2 text-gray-400">
@@ -517,12 +570,15 @@ export const VerifierDashboard: React.FC = () => {
                                         <option value="">Semua Rekening</option>
                                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
-                                    <select value={filters.status_verifikasi} onChange={e => handleFilterChange('status_verifikasi', e.target.value)}
+                                    <select value={statusValue} onChange={e => handleStatusFilterChange(e.target.value)}
                                         className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
                                         <option value="">Semua Status</option>
                                         <option value="menunggu">Menunggu</option>
                                         <option value="diproses">Diproses</option>
-                                        <option value="selesai">Selesai</option>
+                                        <option value="menunggu_review">Perlu Ditinjau</option>
+                                        <option value="selesai|sesuai">Sesuai</option>
+                                        <option value="selesai|tidak_sesuai">Tidak Sesuai</option>
+                                        <option value="selesai|belum_ditentukan">Belum Ditentukan</option>
                                         <option value="gagal">Gagal</option>
                                     </select>
                                 </>
@@ -531,15 +587,19 @@ export const VerifierDashboard: React.FC = () => {
                         {isDocLevel && (
                             <button
                                 onClick={handleBatchVerify}
-                                disabled={selected.size === 0 || batchProcessing}
+                                disabled={batchProcessing}
+                                title={selected.size > 0
+                                    ? `Verifikasi ${selected.size} dokumen terpilih`
+                                    : 'Verifikasi semua dokumen yang belum diverifikasi pada tampilan ini'}
                                 className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors whitespace-nowrap"
                             >
                                 <PlayCircle size={18} />
-                                Verifikasi Otomatis ({selected.size})
+                                {selected.size > 0 ? `Verifikasi Otomatis (${selected.size})` : 'Verifikasi Otomatis'}
                             </button>
                         )}
                     </div>
                 </div>
+                )}
 
                 {/* ─── Level 1-3: Summary Table ─── */}
                 {!isDocLevel && (
@@ -650,6 +710,10 @@ export const VerifierDashboard: React.FC = () => {
                                                     {isProcessingBatch ? (
                                                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
                                                             <Loader2 size={12} className="animate-spin" /> Diproses
+                                                        </span>
+                                                    ) : doc.status_verifikasi === 'menunggu_review' ? (
+                                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                                                            Perlu Ditinjau
                                                         </span>
                                                     ) : doc.status_verifikasi === 'selesai' && doc.hasil_kesesuaian === 'sesuai' ? (
                                                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
