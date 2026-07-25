@@ -10,6 +10,41 @@ Web application untuk verifikasi dokumen laporan subsidi operasional (biaya ruti
 
 ## Changelog
 
+### v1.8.0 — Master Regional, Penempatan Wilayah Verifikator, Status "Perlu Ditinjau" (2026-07-25)
+
+**Status "Perlu Ditinjau" (`menunggu_review`):**
+- Hasil verifikasi otomatis **tidak lagi difinalkan sepihak** saat ada ketidaksesuaian. Cocok semua field → `selesai` + `sesuai` (auto-approve); ada field tidak cocok → `menunggu_review` + `tidak_sesuai`, wajib ditinjau verifikator.
+- `verifikator_id` dan `verified_at` dikosongkan untuk keputusan hasil sistem — atribusi manusia hanya diisi saat keputusan manual.
+- Badge tabel & filter status mengikuti kombinasi `status_verifikasi` + `hasil_kesesuaian`: Menunggu, Diproses, **Perlu Ditinjau**, Sesuai, Tidak Sesuai, Belum Ditentukan, Gagal.
+- Error teknis (OCR service mati, file tak terbaca) tetap `gagal`, terpisah dari ketidaksesuaian data.
+
+**Master Regional Pos Indonesia:**
+- `backend/config/wilayah.php` — daftar 6 regional resmi (Medan, Jakarta, Bandung, Semarang, Surabaya, Makassar) + tabel alias nama lama.
+- Dashboard verifikasi **selalu menampilkan keenam regional**, termasuk yang belum punya dokumen (nilai 0, badge abu-abu "Belum Ada Dokumen"). Sebelumnya daftar hanya hasil `GROUP BY` sehingga regional kosong tidak muncul.
+- Migrasi `2026_07_25_000001_normalize_regional_names` menyeragamkan data lama (`I. MEDAN`→Medan, `Banten`→Jakarta, `kediri`→Surabaya, perbaikan kapitalisasi) di tabel dokumen **dan** profil user.
+- Field Region pada manajemen user jadi dropdown, dikunci di server via `Rule::in` — tidak bisa lagi diisi teks bebas.
+
+**Penempatan Wilayah Verifikator:**
+- Super admin dapat menempatkan verifikator per **Region / KCU / KPC**. Kolom yang dikosongkan berarti "semua" pada level tersebut (kosong semua = akses lintas wilayah).
+- `User::wilayahScope()` jadi sumber tunggal batasan; diterapkan di `index()`, `summary()`, `stats()`, serta sebagai penolakan 403 di `show()` dan `keputusan()`.
+- `BatchVerifikasiController::store()` dan `status()` ikut tersaring agar tidak bisa ditembus lewat kiriman ID langsung.
+- Level regional pada `summary()` otomatis menyusut ke wilayah penempatan verifikator.
+
+**Dashboard Verifikator — UX:**
+- Filter hanya tampil di level dokumen. Level regional/KCU/KPC tidak lagi menampilkan bar filter.
+- **Verifikasi Otomatis tanpa perlu mencentang**: tanpa seleksi, tombol memproses seluruh dokumen yang belum terverifikasi pada scope + filter aktif (lintas halaman). Dengan seleksi, perilaku lama tetap berlaku.
+
+**File Berubah:**
+- `backend/config/wilayah.php`, `backend/database/migrations/2026_07_25_000001_normalize_regional_names.php` — baru.
+- `backend/app/Models/User.php` — `wilayahScope()`.
+- `backend/app/Http/Controllers/VerifikasiController.php`, `BatchVerifikasiController.php` — scoping wilayah + daftar master regional.
+- `backend/app/Http/Requests/StoreUserRequest.php`, `UpdateUserRequest.php` — validasi region.
+- `backend/app/Jobs/ProcessVerifikasiJob.php` — status `menunggu_review`.
+- `backend/database/seeders/VerifikasiSeeder.php`, `UserSeeder.php` — nama regional kanonik.
+- `src/data/constants.ts` — `REGIONALS`.
+- `src/pages/VerifierDashboard.tsx`, `src/pages/AdminUsersPage.tsx`, `src/services/verifikasiService.ts`.
+- `CARA-MENJALANKAN.md`, `CARA-DEPLOY.md`, `CARA-DEPLOY-CLOUDFLARE.md` — panduan menjalankan & deploy.
+
 ### v1.7.0 — Real OCR Pipeline, Fine-tuned NER, Rebrand "ocrnerverify" (2026-06-12)
 
 **Rebranding:**

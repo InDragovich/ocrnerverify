@@ -21,6 +21,7 @@ class BatchVerifikasiController extends Controller
         $ids = $request->ids;
 
         $items = VerifikasiBiayaRutin::whereIn('id', $ids)
+            ->where($user->wilayahScope())
             ->whereIn('status_verifikasi', ['menunggu', 'gagal', 'diproses'])
             ->get();
 
@@ -84,10 +85,13 @@ class BatchVerifikasiController extends Controller
         $ids = array_map('intval', explode(',', $request->ids));
 
         $items = VerifikasiBiayaRutin::whereIn('id', $ids)
+            ->where($request->user()->wilayahScope())
             ->select('id', 'status_verifikasi', 'hasil_kesesuaian', 'catatan_verifikator', 'error_message')
             ->get();
 
-        $completed = $items->whereIn('status_verifikasi', ['selesai', 'gagal'])->count();
+        // "menunggu_review" berarti proses otomatis selesai (menunggu tinjauan manusia),
+        // sehingga dari sisi progress batch dihitung sebagai completed.
+        $completed = $items->whereIn('status_verifikasi', ['selesai', 'gagal', 'menunggu_review'])->count();
         $processing = $items->where('status_verifikasi', 'diproses')->count();
         $failed = $items->where('status_verifikasi', 'gagal')->count();
 

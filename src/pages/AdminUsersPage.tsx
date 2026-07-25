@@ -5,6 +5,7 @@ import type { User } from '../services/authService';
 import { userService } from '../services/userService';
 import type { UserItem } from '../services/userService';
 import { Header } from '../components/Header';
+import { REGIONALS } from '../data/constants';
 import {
     Users, Plus, Pencil, UserX, Loader2, Search, X, Save,
     ChevronLeft, ChevronRight,
@@ -248,9 +249,15 @@ export const AdminUsersPage: React.FC = () => {
                                                 {ROLE_OPTIONS.find(r => r.value === u.role)?.label || u.role}
                                             </span>
                                         </td>
-                                        <td className="p-4 text-sm">{u.region || '-'}</td>
-                                        <td className="p-4 text-sm">{u.kcu || '-'}</td>
-                                        <td className="p-4 text-sm">{u.kcp || '-'}</td>
+                                        <td className="p-4 text-sm">
+                                            {u.region || (u.role === 'verifikator' ? 'Semua Region' : '-')}
+                                        </td>
+                                        <td className="p-4 text-sm">
+                                            {u.kcu || (u.role === 'verifikator' ? 'Semua KCU' : '-')}
+                                        </td>
+                                        <td className="p-4 text-sm">
+                                            {u.kcp || (u.role === 'verifikator' ? 'Semua KPC' : '-')}
+                                        </td>
                                         <td className="p-4 text-center">
                                             <span className={clsx(
                                                 'px-2 py-1 rounded-full text-xs font-medium border',
@@ -356,8 +363,11 @@ export const AdminUsersPage: React.FC = () => {
                                 <div className="grid grid-cols-3 gap-3">
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">Region</label>
-                                        <input type="text" value={form.region} onChange={e => handleFormChange('region', e.target.value)}
-                                            className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+                                        <select value={form.region} onChange={e => handleFormChange('region', e.target.value)}
+                                            className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                                            <option value="">Pilih Region</option>
+                                            {REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">KCU</label>
@@ -369,6 +379,35 @@ export const AdminUsersPage: React.FC = () => {
                                         <input type="text" value={form.kcp} onChange={e => handleFormChange('kcp', e.target.value)}
                                             className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
                                     </div>
+                                </div>
+                            )}
+                            {form.role === 'verifikator' && (
+                                <div>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Region</label>
+                                            <select value={form.region} onChange={e => handleFormChange('region', e.target.value)}
+                                                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                                                <option value="">Semua Region</option>
+                                                {REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">KCU</label>
+                                            <input type="text" value={form.kcu} placeholder="Semua KCU"
+                                                onChange={e => handleFormChange('kcu', e.target.value)}
+                                                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">KPC</label>
+                                            <input type="text" value={form.kcp} placeholder="Semua KPC"
+                                                onChange={e => handleFormChange('kcp', e.target.value)}
+                                                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+                                        </div>
+                                    </div>
+                                    <p className="mt-1.5 text-xs text-gray-500">
+                                        Kolom yang dikosongkan berarti verifikator dapat mengakses semua wilayah pada level tersebut.
+                                    </p>
                                 </div>
                             )}
                         </div>

@@ -22,6 +22,10 @@ class VerifikasiController extends Controller
             $query->where('user_id', $user->id);
         }
 
+        // Verifikator hanya melihat dokumen pada wilayah penempatannya;
+        // kolom penempatan yang kosong berarti "semua" di level tersebut.
+        $query->where($user->wilayahScope());
+
         if ($request->filled('kategori')) {
             $query->where('kategori', $request->kategori);
         }
@@ -103,6 +107,12 @@ class VerifikasiController extends Controller
 
         if ($user->isOperator() && $verifikasi->user_id !== $user->id) {
             return response()->json(['message' => 'Akses ditolak.'], 403);
+        }
+
+        foreach ($user->wilayahScope() as $kolom => $nilai) {
+            if ($verifikasi->{$kolom} !== $nilai) {
+                return response()->json(['message' => 'Dokumen ini berada di luar wilayah penempatan Anda.'], 403);
+            }
         }
 
         return response()->json($verifikasi);
@@ -201,6 +211,12 @@ class VerifikasiController extends Controller
         $user = $request->user();
         $verifikasi = VerifikasiBiayaRutin::findOrFail($id);
 
+        foreach ($user->wilayahScope() as $kolom => $nilai) {
+            if ($verifikasi->{$kolom} !== $nilai) {
+                return response()->json(['message' => 'Dokumen ini berada di luar wilayah penempatan Anda.'], 403);
+            }
+        }
+
         $oldValues = [
             'hasil_kesesuaian' => $verifikasi->hasil_kesesuaian,
             'catatan_verifikator' => $verifikasi->catatan_verifikator,
@@ -254,6 +270,9 @@ class VerifikasiController extends Controller
 
         $query = VerifikasiBiayaRutin::query();
 
+        $scope = $request->user()->wilayahScope();
+        $query->where($scope);
+
         if ($request->filled('tahun')) $query->where('tahun', $request->tahun);
         if ($request->filled('triwulan')) $query->where('triwulan', $request->triwulan);
         if ($request->filled('regional')) $query->where('regional', $request->regional);
@@ -271,7 +290,7 @@ class VerifikasiController extends Controller
                 COUNT(*) as total_dokumen,
                 SUM(nominal_pelaporan) as total_biaya,
                 SUM(CASE WHEN status_verifikasi = 'selesai' THEN 1 ELSE 0 END) as selesai,
-                SUM(CASE WHEN status_verifikasi = 'menunggu' OR status_verifikasi = 'diproses' THEN 1 ELSE 0 END) as menunggu,
+                SUM(CASE WHEN status_verifikasi IN ('menunggu', 'diproses', 'menunggu_review') THEN 1 ELSE 0 END) as menunggu,
                 SUM(CASE WHEN status_verifikasi = 'gagal' THEN 1 ELSE 0 END) as gagal,
                 {$subCount} as jumlah_sub
             ")
@@ -279,17 +298,49 @@ class VerifikasiController extends Controller
             ->orderBy($groupBy)
             ->get();
 
+        // Level regional selalu menampilkan keenam regional Pos Indonesia,
+        // termasuk yang belum punya dokumen (ditampilkan dengan nilai nol).
+        // Verifikator yang terikat satu wilayah hanya melihat wilayahnya.
+        if ($groupBy === 'regional' && !$request->filled('regional')) {
+            $existing = $data->keyBy('nama');
+            $master = isset($scope['regional'])
+                ? [$scope['regional']]
+                : config('wilayah.regional');
+
+            $data = collect($master)->map(function (string $nama) use ($existing) {
+                return $existing->get($nama) ?? (object) [
+                    'nama' => $nama,
+                    'total_dokumen' => 0,
+                    'total_biaya' => 0,
+                    'selesai' => 0,
+                    'menunggu' => 0,
+                    'gagal' => 0,
+                    'jumlah_sub' => 0,
+                ];
+            })->values();
+
+            // Nilai di luar daftar master (data lama yang belum dinormalisasi)
+            // tetap ditampilkan di bawah agar dokumennya tidak "hilang".
+            $data = $data->concat(
+                $existing->reject(fn ($row, $nama) => in_array($nama, config('wilayah.regional'), true))->values()
+            )->values();
+        }
+
         return response()->json($data);
     }
 
     public function stats(Request $request): JsonResponse
     {
-        $statusCounts = VerifikasiBiayaRutin::selectRaw("status_verifikasi, COUNT(*) as count")
+        $scope = $request->user()->wilayahScope();
+
+        $statusCounts = VerifikasiBiayaRutin::where($scope)
+            ->selectRaw("status_verifikasi, COUNT(*) as count")
             ->groupBy('status_verifikasi')
             ->pluck('count', 'status_verifikasi')
             ->toArray();
 
-        $kesesuaianCounts = VerifikasiBiayaRutin::selectRaw("hasil_kesesuaian, COUNT(*) as count")
+        $kesesuaianCounts = VerifikasiBiayaRutin::where($scope)
+            ->selectRaw("hasil_kesesuaian, COUNT(*) as count")
             ->groupBy('hasil_kesesuaian')
             ->pluck('count', 'hasil_kesesuaian')
             ->toArray();
@@ -298,6 +349,7 @@ class VerifikasiController extends Controller
             'status_verifikasi' => [
                 'menunggu' => $statusCounts['menunggu'] ?? 0,
                 'diproses' => $statusCounts['diproses'] ?? 0,
+                'menunggu_review' => $statusCounts['menunggu_review'] ?? 0,
                 'selesai' => $statusCounts['selesai'] ?? 0,
                 'gagal' => $statusCounts['gagal'] ?? 0,
             ],

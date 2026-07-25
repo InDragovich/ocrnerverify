@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -19,7 +20,7 @@ class UpdateUserRequest extends FormRequest
             'username' => 'sometimes|required|string|max:100|unique:users,username,' . $userId,
             'password' => 'sometimes|nullable|string|min:6',
             'role' => 'sometimes|required|string|in:operator,verifikator,super_admin',
-            'region' => 'nullable|string|max:100',
+            'region' => ['nullable', 'string', Rule::in(config('wilayah.regional'))],
             'kcu' => 'nullable|string|max:100',
             'kcp' => 'nullable|string|max:100',
             'is_active' => 'sometimes|boolean',
