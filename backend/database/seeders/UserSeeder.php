@@ -78,8 +78,16 @@ class UserSeeder extends Seeder
             ],
         ];
 
+        // Dicocokkan per username, bukan create langsung. Seeder ini ikut
+        // dijalankan pada tiap deploy, sehingga satu akun yang sudah ada akan
+        // menggagalkan unique constraint dan membatalkan sisa daftar di
+        // bawahnya. Akibatnya akun yang ditambahkan belakangan tidak pernah
+        // terbuat di lingkungan yang sudah pernah di-seed.
         foreach ($users as $userData) {
-            User::create($userData);
+            User::firstOrCreate(
+                ['username' => $userData['username']],
+                $userData,
+            );
         }
     }
 }
