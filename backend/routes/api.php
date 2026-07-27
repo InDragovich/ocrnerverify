@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BatchVerifikasiController;
+use App\Http\Controllers\ExportController;
 use App\Http\Controllers\MockOcrNerController;
 use App\Http\Controllers\VerifikasiController;
 use App\Http\Controllers\Admin\UserController;
@@ -35,6 +36,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/verifikasi/batch', [BatchVerifikasiController::class, 'store'])
         ->middleware('role:verifikator,super_admin');
     Route::get('/verifikasi/batch-status', [BatchVerifikasiController::class, 'status'])
+        ->middleware('role:verifikator,super_admin');
+
+    // Ekspor CSV — harus mendahului route {id}
+    Route::get('/verifikasi/export/dokumen', [ExportController::class, 'dokumen'])
+        ->middleware('role:verifikator,super_admin');
+    Route::get('/verifikasi/export/batch', [ExportController::class, 'batch'])
         ->middleware('role:verifikator,super_admin');
 
     // Verifikasi CRUD

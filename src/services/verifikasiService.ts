@@ -20,6 +20,10 @@ export interface VerifikasiItem {
     hasil_ekstraksi_teks: string | null;
     hasil_entitas: Record<string, string | null> | null;
     error_message: string | null;
+    /** Waktu murni pemrosesan di layanan OCR-NER, dalam milidetik. */
+    waktu_ocr_ner_ms: number | null;
+    /** Waktu ujung ke ujung dari sisi backend (termasuk transfer berkas), dalam milidetik. */
+    waktu_pemrosesan_ms: number | null;
     verified_at: string | null;
     created_at: string;
     updated_at: string;
@@ -61,7 +65,19 @@ export interface BatchStatusResponse {
         hasil_kesesuaian: string;
         catatan_verifikator: string | null;
         error_message: string | null;
+        waktu_ocr_ner_ms: number | null;
+        waktu_pemrosesan_ms: number | null;
     }>;
+}
+
+export interface BatchVerifyResponse {
+    message: string;
+    total_jobs: number;
+    ids: number[];
+    /** Durasi seluruh batch di sisi server, dalam milidetik. */
+    waktu_batch_ms: number | null;
+    /** Rata-rata durasi per dokumen, dalam milidetik. */
+    waktu_rata_rata_ms: number | null;
 }
 
 export interface Filters {
@@ -148,8 +164,8 @@ export const verifikasiService = {
         return data;
     },
 
-    async batchVerify(ids: number[]): Promise<{ message: string; total_jobs: number; ids: number[] }> {
-        const { data } = await api.post('/verifikasi/batch', { ids });
+    async batchVerify(ids: number[]): Promise<BatchVerifyResponse> {
+        const { data } = await api.post<BatchVerifyResponse>('/verifikasi/batch', { ids });
         return data;
     },
 
@@ -158,6 +174,34 @@ export const verifikasiService = {
             params: { ids: ids.join(',') },
         });
         return data;
+    },
+
+    /**
+     * Mengunduh CSV hasil verifikasi. `jenis` menentukan sudut pandangnya:
+     * 'dokumen' satu baris per dokumen, 'batch' satu baris per pelaksanaan
+     * verifikasi otomatis.
+     */
+    async exportCsv(jenis: 'dokumen' | 'batch', filters: Filters = {}): Promise<void> {
+        const params = Object.fromEntries(
+            Object.entries(filters).filter(([k, v]) =>
+                v !== undefined && v !== '' && k !== 'page' && k !== 'per_page'
+            )
+        );
+        const response = await api.get(`/verifikasi/export/${jenis}`, {
+            params,
+            responseType: 'blob',
+        });
+
+        const disposition = response.headers['content-disposition'] as string | undefined;
+        const namaBerkas = disposition?.match(/filename="?([^"]+)"?/)?.[1]
+            ?? `verifikasi-${jenis}.csv`;
+
+        const url = URL.createObjectURL(response.data as Blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = namaBerkas;
+        link.click();
+        URL.revokeObjectURL(url);
     },
 
     async setKeputusan(

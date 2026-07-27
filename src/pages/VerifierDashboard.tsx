@@ -5,10 +5,11 @@ import type { User } from '../services/authService';
 import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem, Filters, SummaryItem } from '../services/verifikasiService';
 import { CATEGORIES } from '../data/constants';
+import { formatDurasi, formatDurasiPanjang } from '../utils/waktu';
 import { Header } from '../components/Header';
 import { DetailModal } from '../components/DetailModal';
 import {
-    Filter, Eye, Loader2,
+    Filter, Eye, Loader2, CheckCircle2, Download,
     PlayCircle, CheckSquare, Square, MinusSquare, Search,
     ChevronRight, Building2, Landmark, MapPin, FileText,
 } from 'lucide-react';
@@ -197,6 +198,21 @@ export const VerifierDashboard: React.FC = () => {
     const [batchIds, setBatchIds] = useState<number[]>([]);
     const [batchProgress, setBatchProgress] = useState({ total: 0, completed: 0, processing: 0, failed: 0 });
     const [batchMsg, setBatchMsg] = useState('');
+    // Ringkasan waktu pemrosesan batch terakhir (milidetik, dari sisi server).
+    const [batchWaktu, setBatchWaktu] = useState<{
+        total: number | null;
+        rataRata: number | null;
+        dokumen: number;
+    } | null>(null);
+    const [exporting, setExporting] = useState<'dokumen' | 'batch' | null>(null);
+    // Dialog ringkasan yang muncul setelah verifikasi otomatis selesai.
+    const [batchDialog, setBatchDialog] = useState<{
+        berhasil: number;
+        gagal: number;
+        dokumen: number;
+        waktuTotal: number | null;
+        waktuRata: number | null;
+    } | null>(null);
 
     // detail modal
     const [detailDoc, setDetailDoc] = useState<VerifikasiItem | null>(null);
@@ -388,10 +404,16 @@ export const VerifierDashboard: React.FC = () => {
         setBatchProcessing(true);
         setBatchIds(ids);
         setBatchMsg('');
+        setBatchWaktu(null);
         setBatchProgress({ total: ids.length, completed: 0, processing: ids.length, failed: 0 });
 
         try {
-            await verifikasiService.batchVerify(ids);
+            const hasil = await verifikasiService.batchVerify(ids);
+            setBatchWaktu({
+                total: hasil.waktu_batch_ms ?? null,
+                rataRata: hasil.waktu_rata_rata_ms ?? null,
+                dokumen: hasil.total_jobs,
+            });
 
             try {
                 const status = await verifikasiService.getBatchStatus(ids);
@@ -406,9 +428,23 @@ export const VerifierDashboard: React.FC = () => {
                     `Verifikasi selesai: ${successCount} berhasil` +
                     (status.failed > 0 ? `, ${status.failed} gagal` : '')
                 );
+                setBatchDialog({
+                    berhasil: successCount,
+                    gagal: status.failed,
+                    dokumen: hasil.total_jobs,
+                    waktuTotal: hasil.waktu_batch_ms ?? null,
+                    waktuRata: hasil.waktu_rata_rata_ms ?? null,
+                });
             } catch {
                 setBatchProgress({ total: ids.length, completed: ids.length, processing: 0, failed: 0 });
                 setBatchMsg('Verifikasi selesai.');
+                setBatchDialog({
+                    berhasil: hasil.total_jobs,
+                    gagal: 0,
+                    dokumen: hasil.total_jobs,
+                    waktuTotal: hasil.waktu_batch_ms ?? null,
+                    waktuRata: hasil.waktu_rata_rata_ms ?? null,
+                });
             }
 
             setBatchProcessing(false);
@@ -419,12 +455,31 @@ export const VerifierDashboard: React.FC = () => {
         } catch (err: unknown) {
             setBatchProcessing(false);
             setBatchIds([]);
+            setBatchWaktu(null);
             const axiosErr = err as { response?: { data?: { message?: string } } };
             const msg = axiosErr?.response?.data?.message || (err instanceof Error ? err.message : 'Terjadi kesalahan');
             setBatchMsg(`Gagal memproses verifikasi: ${msg}`);
             loadDocuments();
             setTimeout(() => setBatchMsg(''), 8000);
         }
+    };
+
+    const handleExport = async (jenis: 'dokumen' | 'batch') => {
+        setExporting(jenis);
+        try {
+            // Ekspor dokumen mengikuti penapis yang sedang aktif agar isinya sama
+            // dengan yang terlihat di layar; riwayat batch selalu diambil utuh.
+            await verifikasiService.exportCsv(
+                jenis,
+                jenis === 'dokumen' ? { ...filters, ...drillPath } : {},
+            );
+        } catch (err: unknown) {
+            const axiosErr = err as { response?: { data?: { message?: string } } };
+            const msg = axiosErr?.response?.data?.message || (err instanceof Error ? err.message : 'Terjadi kesalahan');
+            setBatchMsg(`Gagal mengekspor data: ${msg}`);
+            setTimeout(() => setBatchMsg(''), 6000);
+        }
+        setExporting(null);
     };
 
     const progressPercent = batchProgress.total > 0
@@ -540,6 +595,13 @@ export const VerifierDashboard: React.FC = () => {
                         batchMsg.includes('Gagal') ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'
                     )}>
                         {batchMsg}
+                        {batchWaktu && !batchMsg.includes('Gagal') && (
+                            <div className="mt-2 pt-2 border-t border-green-200 flex flex-wrap gap-x-6 gap-y-1 text-xs font-normal text-green-800">
+                                <span>Dokumen diproses: <strong>{batchWaktu.dokumen}</strong></span>
+                                <span>Total waktu pemrosesan: <strong>{formatDurasiPanjang(batchWaktu.total)}</strong></span>
+                                <span>Rata-rata per dokumen: <strong>{formatDurasi(batchWaktu.rataRata)}</strong></span>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -584,6 +646,30 @@ export const VerifierDashboard: React.FC = () => {
                                 </>
                             )}
                         </div>
+                        {/* Kedua tombol ekspor disusun bertumpuk agar barisan penapis
+                            tidak terdorong membungkus ke baris berikutnya. */}
+                        {isDocLevel && (
+                            <div className="flex flex-col gap-2">
+                                <button
+                                    onClick={() => handleExport('dokumen')}
+                                    disabled={exporting !== null}
+                                    title="Unduh rekapitulasi per dokumen dalam format CSV"
+                                    className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 text-sm font-semibold rounded-xl transition-colors whitespace-nowrap"
+                                >
+                                    <Download size={16} />
+                                    {exporting === 'dokumen' ? 'Menyiapkan...' : 'Ekspor Dokumen'}
+                                </button>
+                                <button
+                                    onClick={() => handleExport('batch')}
+                                    disabled={exporting !== null}
+                                    title="Unduh riwayat pelaksanaan verifikasi otomatis beserta waktunya"
+                                    className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 text-sm font-semibold rounded-xl transition-colors whitespace-nowrap"
+                                >
+                                    <Download size={16} />
+                                    {exporting === 'batch' ? 'Menyiapkan...' : 'Ekspor Riwayat Batch'}
+                                </button>
+                            </div>
+                        )}
                         {isDocLevel && (
                             <button
                                 onClick={handleBatchVerify}
@@ -804,6 +890,87 @@ export const VerifierDashboard: React.FC = () => {
                     </div>
                 )}
             </main>
+
+            {/* Dialog ringkasan verifikasi otomatis */}
+            {batchDialog && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                    onClick={() => setBatchDialog(null)}
+                >
+                    <div
+                        className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Warna hijau hanya dipakai ketika benar-benar tidak ada
+                            dokumen yang gagal, agar tidak menyesatkan pembaca. */}
+                        <div className={clsx(
+                            'border-b p-6 text-center',
+                            batchDialog.gagal > 0 ? 'bg-amber-50 border-amber-100' : 'bg-green-50 border-green-100'
+                        )}>
+                            <div className={clsx(
+                                'w-14 h-14 mx-auto mb-3 rounded-full flex items-center justify-center',
+                                batchDialog.gagal > 0 ? 'bg-amber-100' : 'bg-green-100'
+                            )}>
+                                <CheckCircle2 size={30} className={batchDialog.gagal > 0 ? 'text-amber-600' : 'text-green-600'} />
+                            </div>
+                            <h3 className={clsx(
+                                'text-lg font-bold',
+                                batchDialog.gagal > 0 ? 'text-amber-800' : 'text-green-800'
+                            )}>
+                                {batchDialog.gagal > 0
+                                    ? 'Verifikasi Otomatis Selesai'
+                                    : 'Verifikasi Otomatis Berhasil'}
+                            </h3>
+                            <p className={clsx(
+                                'text-sm mt-1',
+                                batchDialog.gagal > 0 ? 'text-amber-700' : 'text-green-700'
+                            )}>
+                                {batchDialog.gagal > 0
+                                    ? 'Sebagian dokumen gagal diproses. Periksa kembali daftarnya.'
+                                    : 'Proses OCR dan NER selesai dijalankan.'}
+                            </p>
+                        </div>
+
+                        <div className="p-6 space-y-3">
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-500">Dokumen diproses</span>
+                                <span className="font-semibold text-gray-800">{batchDialog.dokumen}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-500">Berhasil</span>
+                                <span className="font-semibold text-green-700">{batchDialog.berhasil}</span>
+                            </div>
+                            {batchDialog.gagal > 0 && (
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-gray-500">Gagal</span>
+                                    <span className="font-semibold text-red-600">{batchDialog.gagal}</span>
+                                </div>
+                            )}
+                            <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
+                                <span className="text-sm text-gray-500">Total waktu pemrosesan</span>
+                                <span className="text-lg font-bold text-indigo-700">
+                                    {formatDurasiPanjang(batchDialog.waktuTotal)}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-500">Rata-rata per dokumen</span>
+                                <span className="font-semibold text-gray-800">
+                                    {formatDurasi(batchDialog.waktuRata)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="px-6 pb-6">
+                            <button
+                                onClick={() => setBatchDialog(null)}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition-colors"
+                            >
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Detail Modal */}
             {detailDoc && (

@@ -30,6 +30,9 @@ class VerifikasiBiayaRutin extends Model
         'hasil_ekstraksi_teks',
         'hasil_entitas',
         'error_message',
+        'metode_ekstraksi',
+        'waktu_ocr_ner_ms',
+        'waktu_pemrosesan_ms',
         'verified_at',
     ];
 
@@ -40,6 +43,8 @@ class VerifikasiBiayaRutin extends Model
             'triwulan' => 'integer',
             'nominal_pelaporan' => 'integer',
             'hasil_entitas' => 'array',
+            'waktu_ocr_ner_ms' => 'integer',
+            'waktu_pemrosesan_ms' => 'integer',
             'verified_at' => 'datetime',
         ];
     }

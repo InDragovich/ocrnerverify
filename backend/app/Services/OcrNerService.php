@@ -19,11 +19,25 @@ class OcrNerService
      */
     public function extract(string $filePath, string $originalName, array $inputData = []): array
     {
-        if (config('ocr_ner.use_mock', true)) {
-            return $this->extractMock($originalName, $inputData);
-        }
+        $useMock = config('ocr_ner.use_mock', true);
+        $start = microtime(true);
 
-        return $this->extractApi($filePath, $originalName, $inputData);
+        $result = $useMock
+            ? $this->extractMock($originalName, $inputData)
+            : $this->extractApi($filePath, $originalName, $inputData);
+
+        // Waktu ujung ke ujung diukur dari sisi Laravel sehingga sudah mencakup
+        // transfer berkas dan overhead HTTP. Nilainya selalu >= waktu murni
+        // layanan OCR-NER; selisih keduanya adalah biaya komunikasi antarlayanan.
+        $result['waktu_pemrosesan_ms'] = (int) round((microtime(true) - $start) * 1000);
+
+        // Mode mock berjalan dalam proses yang sama, tidak ada biaya komunikasi,
+        // sehingga kedua angka waktunya identik.
+        $result['waktu_ocr_ner_ms'] = $result['waktu_ocr_ner_ms']
+            ?? ($useMock ? $result['waktu_pemrosesan_ms'] : null);
+        $result['metode_ekstraksi'] = $result['metode_ekstraksi'] ?? ($useMock ? 'Mock' : null);
+
+        return $result;
     }
 
     private function extractMock(string $originalName, array $inputData): array
@@ -160,6 +174,11 @@ class OcrNerService
                     ],
                     'status' => $data['status'] ?? 'failed',
                     'error_message' => $data['error_message'] ?? null,
+                    'metode_ekstraksi' => $data['ocr']['metode_ekstraksi'] ?? null,
+                    // Layanan mengirim detik dengan tiga desimal; disimpan sebagai milidetik.
+                    'waktu_ocr_ner_ms' => isset($data['waktu_total'])
+                        ? (int) round($data['waktu_total'] * 1000)
+                        : null,
                 ];
             }
 
