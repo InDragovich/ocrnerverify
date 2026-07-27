@@ -7,6 +7,7 @@ use App\Http\Requests\StoreVerifikasiRequest;
 use App\Http\Requests\UpdateVerifikasiRequest;
 use App\Models\VerifikasiBiayaRutin;
 use App\Services\AuditService;
+use App\Services\WilayahService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -310,35 +311,78 @@ class VerifikasiController extends Controller
             ->orderBy($groupBy)
             ->get();
 
-        // Level regional selalu menampilkan keenam regional Pos Indonesia,
-        // termasuk yang belum punya dokumen (ditampilkan dengan nilai nol).
-        // Verifikator yang terikat satu wilayah hanya melihat wilayahnya.
-        if ($groupBy === 'regional' && !$request->filled('regional')) {
-            $existing = $data->keyBy('nama');
-            $master = isset($scope['regional'])
-                ? [$scope['regional']]
-                : config('wilayah.regional');
+        // Setiap level penelusuran selalu menampilkan seluruh wilayah pada
+        // daftar master, termasuk yang belum punya dokumen (nilai nol),
+        // sehingga verifikator tetap dapat menelusuri wilayah kosong.
+        $master = $this->daftarMasterWilayah($groupBy, $request, $scope);
 
-            $data = collect($master)->map(function (string $nama) use ($existing) {
-                return $existing->get($nama) ?? (object) [
-                    'nama' => $nama,
-                    'total_dokumen' => 0,
-                    'total_biaya' => 0,
-                    'selesai' => 0,
-                    'menunggu' => 0,
-                    'gagal' => 0,
-                    'jumlah_sub' => 0,
-                ];
-            })->values();
+        if ($master !== null) {
+            $existing = $data->keyBy('nama');
+
+            $data = collect($master)->map(fn (string $nama) => $existing->get($nama) ?? (object) [
+                'nama' => $nama,
+                'total_dokumen' => 0,
+                'total_biaya' => 0,
+                'selesai' => 0,
+                'menunggu' => 0,
+                'gagal' => 0,
+                'jumlah_sub' => 0,
+            ])->values();
 
             // Nilai di luar daftar master (data lama yang belum dinormalisasi)
             // tetap ditampilkan di bawah agar dokumennya tidak "hilang".
             $data = $data->concat(
-                $existing->reject(fn ($row, $nama) => in_array($nama, config('wilayah.regional'), true))->values()
+                $existing->reject(fn ($row, $nama) => in_array($nama, $master, true))->values()
             )->values();
         }
 
         return response()->json($data);
+    }
+
+    /**
+     * Daftar wilayah master yang harus selalu tampil pada level penelusuran
+     * tertentu, atau null bila level tersebut tidak dapat ditentukan dari
+     * master. Penempatan verifikator mempersempit daftarnya.
+     *
+     * @param  array<string, string>  $scope
+     * @return array<int, string>|null
+     */
+    private function daftarMasterWilayah(string $groupBy, Request $request, array $scope): ?array
+    {
+        $struktur = WilayahService::struktur();
+
+        $regionalTerpilih = $request->input('regional') ?: ($scope['regional'] ?? null);
+        $kcuTerpilih = $request->input('kcu') ?: ($scope['kcu'] ?? null);
+
+        $daftar = match ($groupBy) {
+            'regional' => $regionalTerpilih
+                ? [$regionalTerpilih]
+                : array_keys($struktur),
+
+            // Tanpa penyaring regional, seluruh KCU dari semua regional
+            // yang boleh diakses ditampilkan.
+            'kcu' => $regionalTerpilih
+                ? WilayahService::kcuList($regionalTerpilih)
+                : array_merge(...array_map('array_keys', array_values($struktur) ?: [[]])),
+
+            // KPC hanya dapat ditentukan bila regional dan KCU-nya jelas.
+            'kpc' => $regionalTerpilih && $kcuTerpilih
+                ? WilayahService::kpcList($regionalTerpilih, $kcuTerpilih)
+                : null,
+        };
+
+        if ($daftar === null) {
+            return null;
+        }
+
+        // Verifikator yang terikat sampai level ini hanya melihat wilayahnya.
+        // Kunci wilayahScope() memakai nama yang sama dengan nilai group_by.
+        $batas = $scope[$groupBy] ?? null;
+        if ($batas !== null) {
+            $daftar = array_values(array_filter($daftar, fn ($nama) => $nama === $batas));
+        }
+
+        return array_values(array_unique($daftar));
     }
 
     public function stats(Request $request): JsonResponse
