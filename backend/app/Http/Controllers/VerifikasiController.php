@@ -67,15 +67,27 @@ class VerifikasiController extends Controller
         $file = $request->file('lampiran');
         $path = $file->store('lampiran', 'local');
 
+        // Operator lintas wilayah memilih wilayah dokumen dari form; operator
+        // yang terikat wilayah memakai penempatan pada profilnya.
+        $wilayah = $user->isOperatorLintasWilayah()
+            ? [
+                'regional' => $request->regional,
+                'kcu' => $request->kcu,
+                'kpc' => $request->kpc,
+            ]
+            : [
+                'regional' => $user->region ?? '',
+                'kcu' => $user->kcu ?? '',
+                'kpc' => $user->kcp ?? '',
+            ];
+
         $verifikasi = VerifikasiBiayaRutin::create([
             'user_id' => $user->id,
             'kategori' => $request->kategori,
             'tahun' => $request->tahun,
             'triwulan' => $request->triwulan,
             'periode' => $request->periode,
-            'regional' => $user->region ?? '',
-            'kcu' => $user->kcu ?? '',
-            'kpc' => $user->kcp ?? '',
+            ...$wilayah,
             'nominal_pelaporan' => $request->nominal_pelaporan,
             'lampiran_path' => $path,
             'lampiran_nama_asli' => $file->getClientOriginalName(),

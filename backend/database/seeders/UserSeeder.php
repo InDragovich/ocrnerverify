@@ -47,6 +47,18 @@ class UserSeeder extends Seeder
                 'kcp' => 'KCP Pettarani',
             ],
             [
+                // Operator lintas wilayah: region dikosongkan sehingga dapat
+                // menginput dokumen untuk seluruh regional/KCU/KPC. Dipakai
+                // untuk menyiapkan data simulasi pengujian.
+                'name' => 'Operator Pusat',
+                'username' => 'input_pusat',
+                'password' => 'password',
+                'role' => 'operator',
+                'region' => null,
+                'kcu' => null,
+                'kcp' => null,
+            ],
+            [
                 'name' => 'Admin Verifikator',
                 'username' => 'verificator',
                 'password' => 'password',
