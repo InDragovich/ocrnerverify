@@ -53,6 +53,10 @@ class BatchVerifikasiController extends Controller
 
         // Process jobs synchronously so no queue worker is needed.
         // Wrap each job in try-catch so one failure doesn't stop the rest.
+        // Batch berjalan sinkron, sehingga durasi seluruh proses dapat diukur
+        // langsung di sini tanpa perlu bergantung pada waktu di sisi peramban.
+        $batchStart = microtime(true);
+
         foreach ($processedIds as $id) {
             try {
                 ProcessVerifikasiJob::dispatchSync($id, $user->id);
@@ -69,10 +73,27 @@ class BatchVerifikasiController extends Controller
             }
         }
 
+        $waktuBatchMs = (int) round((microtime(true) - $batchStart) * 1000);
+        $totalJobs = count($processedIds);
+
+        AuditService::log(
+            'batch_verify_completed',
+            null,
+            null,
+            null,
+            [
+                'total' => $totalJobs,
+                'waktu_batch_ms' => $waktuBatchMs,
+                'waktu_rata_rata_ms' => $totalJobs > 0 ? (int) round($waktuBatchMs / $totalJobs) : null,
+            ],
+        );
+
         return response()->json([
             'message' => 'Batch verifikasi selesai.',
-            'total_jobs' => count($processedIds),
+            'total_jobs' => $totalJobs,
             'ids' => $processedIds,
+            'waktu_batch_ms' => $waktuBatchMs,
+            'waktu_rata_rata_ms' => $totalJobs > 0 ? (int) round($waktuBatchMs / $totalJobs) : null,
         ]);
     }
 
@@ -86,7 +107,7 @@ class BatchVerifikasiController extends Controller
 
         $items = VerifikasiBiayaRutin::whereIn('id', $ids)
             ->where($request->user()->wilayahScope())
-            ->select('id', 'status_verifikasi', 'hasil_kesesuaian', 'catatan_verifikator', 'error_message')
+            ->select('id', 'status_verifikasi', 'hasil_kesesuaian', 'catatan_verifikator', 'error_message', 'waktu_ocr_ner_ms', 'waktu_pemrosesan_ms')
             ->get();
 
         // "menunggu_review" berarti proses otomatis selesai (menunggu tinjauan manusia),

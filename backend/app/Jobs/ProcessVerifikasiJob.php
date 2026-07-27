@@ -53,8 +53,12 @@ class ProcessVerifikasiJob implements ShouldQueue
                 'nominal' => $verifikasi->nominal_pelaporan,
             ]);
 
-            // Save OCR text regardless of status
+            // Save OCR text and processing time regardless of status, sehingga
+            // dokumen yang gagal pun tetap punya catatan waktu untuk analisis.
             $verifikasi->hasil_ekstraksi_teks = $ocrResult['text_ocr'];
+            $verifikasi->metode_ekstraksi = $ocrResult['metode_ekstraksi'] ?? null;
+            $verifikasi->waktu_ocr_ner_ms = $ocrResult['waktu_ocr_ner_ms'] ?? null;
+            $verifikasi->waktu_pemrosesan_ms = $ocrResult['waktu_pemrosesan_ms'] ?? null;
 
             if ($ocrResult['status'] === 'failed') {
                 $this->markFailed($verifikasi, $ocrResult['error_message'] ?? 'OCR-NER extraction failed');
@@ -100,6 +104,8 @@ class ProcessVerifikasiJob implements ShouldQueue
                 [
                     'hasil_kesesuaian' => $matchResult['hasil_kesesuaian'],
                     'matching_detail' => $matchResult['detail'],
+                    'waktu_ocr_ner_ms' => $verifikasi->waktu_ocr_ner_ms,
+                    'waktu_pemrosesan_ms' => $verifikasi->waktu_pemrosesan_ms,
                 ],
                 $this->verifikatorId,
             );

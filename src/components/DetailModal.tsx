@@ -3,7 +3,8 @@ import { verifikasiService } from '../services/verifikasiService';
 import type { VerifikasiItem } from '../services/verifikasiService';
 import { STATUS_VERIFIKASI, HASIL_KESESUAIAN, CATEGORIES, MONTHS } from '../data/constants';
 import { LampiranViewer } from './LampiranViewer';
-import { X, FileText, CheckCircle2, XCircle, Loader2, AlertCircle, Pencil } from 'lucide-react';
+import { formatDurasi } from '../utils/waktu';
+import { X, FileText, CheckCircle2, XCircle, Loader2, AlertCircle, Pencil, Clock } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DetailModalProps {
@@ -130,9 +131,22 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                         <FileText size={22} className="text-indigo-600" />
                         Detail Verifikasi #{doc.id}
                     </h3>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                        <X size={22} className="text-gray-500" />
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {/* Waktu pemrosesan ditempatkan di header agar terlihat begitu modal
+                            dibuka, tanpa bergantung pada tab yang sedang aktif. */}
+                        {doc.waktu_ocr_ner_ms !== null && (
+                            <span
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-semibold"
+                                title={`Waktu ujung ke ujung: ${formatDurasi(doc.waktu_pemrosesan_ms)}`}
+                            >
+                                <Clock size={15} />
+                                {formatDurasi(doc.waktu_ocr_ner_ms)}
+                            </span>
+                        )}
+                        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                            <X size={22} className="text-gray-500" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Tabs */}
@@ -218,6 +232,27 @@ export const DetailModal: React.FC<DetailModalProps> = ({ doc: initialDoc, onClo
                                 </div>
                             ) : (
                                 <>
+                                    {/* Waktu Pemrosesan */}
+                                    <div>
+                                        <h4 className="font-semibold text-gray-800 mb-2">Waktu Pemrosesan</h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                                <p className="text-xs text-gray-500 mb-1">Modul OCR-NER</p>
+                                                <p className="text-lg font-semibold text-gray-800">
+                                                    {formatDurasi(doc.waktu_ocr_ner_ms)}
+                                                </p>
+                                            </div>
+                                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                                                <p className="text-xs text-gray-500 mb-1">
+                                                    Ujung ke ujung (termasuk transfer berkas)
+                                                </p>
+                                                <p className="text-lg font-semibold text-gray-800">
+                                                    {formatDurasi(doc.waktu_pemrosesan_ms)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {/* Extracted Text */}
                                     <div>
                                         <h4 className="font-semibold text-gray-800 mb-2">Teks Hasil Ekstraksi (OCR)</h4>
