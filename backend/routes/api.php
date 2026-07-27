@@ -6,6 +6,7 @@ use App\Http\Controllers\BatchVerifikasiController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\MockOcrNerController;
 use App\Http\Controllers\VerifikasiController;
+use App\Http\Controllers\WilayahController;
 use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,6 +26,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+
+    // Daftar master wilayah (regional => KCU => KPC)
+    Route::get('/wilayah', [WilayahController::class, 'index']);
 
     // Verifikasi - stats & summary must come before {id} route
     Route::get('/verifikasi/stats', [VerifikasiController::class, 'stats'])

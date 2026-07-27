@@ -55,6 +55,16 @@ class User extends Authenticatable
         return $this->role === 'operator';
     }
 
+    /**
+     * Operator lintas wilayah: operator yang region-nya dikosongkan sehingga
+     * boleh memilih sendiri regional/KCU/KPC dokumen saat menginput data.
+     * Operator yang region-nya terisi tetap terkunci pada wilayah profilnya.
+     */
+    public function isOperatorLintasWilayah(): bool
+    {
+        return $this->isOperator() && blank($this->region);
+    }
+
     public function isVerifikator(): bool
     {
         return $this->role === 'verifikator';

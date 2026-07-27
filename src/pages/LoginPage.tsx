@@ -96,7 +96,7 @@ export const LoginPage: React.FC = () => {
                 </form>
 
                 <div className="mt-6 pt-4 border-t border-gray-200">
-                    <p className="text-xs text-gray-400 text-center">Demo accounts: input_jkt / input_medan / verificator / superadmin (password: password)</p>
+                    <p className="text-xs text-gray-400 text-center">Demo accounts: input_jkt / input_medan / verificator / superadmin / operator (password: password)</p>
                 </div>
             </div>
         </div>

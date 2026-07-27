@@ -115,7 +115,15 @@ export const AdminUsersPage: React.FC = () => {
     };
 
     const handleFormChange = (key: keyof FormData, value: string) => {
-        setForm(prev => ({ ...prev, [key]: value }));
+        setForm(prev => {
+            const next = { ...prev, [key]: value };
+            // Operator tanpa region tidak terikat wilayah, jadi KCU/KPC ikut dikosongkan.
+            if (key === 'region' && !value && prev.role === 'operator') {
+                next.kcu = '';
+                next.kcp = '';
+            }
+            return next;
+        });
     };
 
     const handleSave = async () => {
@@ -250,13 +258,16 @@ export const AdminUsersPage: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="p-4 text-sm">
-                                            {u.region || (u.role === 'verifikator' ? 'Semua Region' : '-')}
+                                            {u.region || (u.role === 'verifikator' ? 'Semua Region'
+                                                : u.role === 'operator' ? 'Lintas Wilayah' : '-')}
                                         </td>
                                         <td className="p-4 text-sm">
-                                            {u.kcu || (u.role === 'verifikator' ? 'Semua KCU' : '-')}
+                                            {u.kcu || (u.role === 'verifikator' ? 'Semua KCU'
+                                                : u.role === 'operator' ? 'Dipilih saat input' : '-')}
                                         </td>
                                         <td className="p-4 text-sm">
-                                            {u.kcp || (u.role === 'verifikator' ? 'Semua KPC' : '-')}
+                                            {u.kcp || (u.role === 'verifikator' ? 'Semua KPC'
+                                                : u.role === 'operator' ? 'Dipilih saat input' : '-')}
                                         </td>
                                         <td className="p-4 text-center">
                                             <span className={clsx(
@@ -360,25 +371,35 @@ export const AdminUsersPage: React.FC = () => {
                                 </select>
                             </div>
                             {form.role === 'operator' && (
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Region</label>
-                                        <select value={form.region} onChange={e => handleFormChange('region', e.target.value)}
-                                            className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
-                                            <option value="">Pilih Region</option>
-                                            {REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
+                                <div>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Region</label>
+                                            <select value={form.region} onChange={e => handleFormChange('region', e.target.value)}
+                                                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                                                <option value="">Lintas Wilayah</option>
+                                                {REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">KCU</label>
+                                            <input type="text" value={form.kcu} disabled={!form.region}
+                                                placeholder={form.region ? '' : 'Dipilih saat input'}
+                                                onChange={e => handleFormChange('kcu', e.target.value)}
+                                                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm disabled:bg-gray-100 disabled:text-gray-400" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">KPC</label>
+                                            <input type="text" value={form.kcp} disabled={!form.region}
+                                                placeholder={form.region ? '' : 'Dipilih saat input'}
+                                                onChange={e => handleFormChange('kcp', e.target.value)}
+                                                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm disabled:bg-gray-100 disabled:text-gray-400" />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1">KCU</label>
-                                        <input type="text" value={form.kcu} onChange={e => handleFormChange('kcu', e.target.value)}
-                                            className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1">KPC</label>
-                                        <input type="text" value={form.kcp} onChange={e => handleFormChange('kcp', e.target.value)}
-                                            className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
-                                    </div>
+                                    <p className="mt-1.5 text-xs text-gray-500">
+                                        Region yang dikosongkan menjadikan operator lintas wilayah: wilayah dokumen
+                                        dipilih sendiri dari data master pada saat menginput data.
+                                    </p>
                                 </div>
                             )}
                             {form.role === 'verifikator' && (
