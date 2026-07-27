@@ -17,7 +17,7 @@ class UserSeeder extends Seeder
                 'role' => 'operator',
                 'region' => 'Jakarta',
                 'kcu' => 'KCU Jakarta Utara',
-                'kcp' => 'KCP Tanjung Priok',
+                'kcp' => 'KPC Tanjung Priok',
             ],
             [
                 'name' => 'Siti Aminah',
@@ -25,8 +25,8 @@ class UserSeeder extends Seeder
                 'password' => 'password',
                 'role' => 'operator',
                 'region' => 'Medan',
-                'kcu' => 'KCU MEDAN',
-                'kcp' => 'MEDANPAYAGELI',
+                'kcu' => 'KCU Medan',
+                'kcp' => 'KPC Medanpayageli',
             ],
             [
                 'name' => 'Agus Salim',
@@ -35,7 +35,7 @@ class UserSeeder extends Seeder
                 'role' => 'operator',
                 'region' => 'Surabaya',
                 'kcu' => 'KCU Surabaya Gubeng',
-                'kcp' => 'KCP Dharmawangsa',
+                'kcp' => 'KPC Dharmawangsa',
             ],
             [
                 'name' => 'Rina Wati',
@@ -43,8 +43,8 @@ class UserSeeder extends Seeder
                 'password' => 'password',
                 'role' => 'operator',
                 'region' => 'Makassar',
-                'kcu' => 'KCU Makassar Panakkukang',
-                'kcp' => 'KCP Pettarani',
+                'kcu' => 'KCU Makassar',
+                'kcp' => 'KPC Pettarani',
             ],
             [
                 // Operator lintas wilayah: region dikosongkan sehingga dapat

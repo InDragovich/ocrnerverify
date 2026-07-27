@@ -71,9 +71,9 @@ return [
             ],
         ],
         'Jakarta' => [
-            'KCU Jakarta Pusat' => [
-                'KPC Pasar Baru',
+            'KCU Jakarta Utara' => [
                 'KPC Tanjung Priok',
+                'KPC Pasar Baru',
                 'KPC Kemayoran',
                 'KPC Senen',
                 'KPC Cempaka Putih',
@@ -81,11 +81,11 @@ return [
         ],
         'Bandung' => [
             'KCU Bandung' => [
+                'KPC Bojongsoang',
                 'KPC Cicendo',
                 'KPC Dago',
                 'KPC Kiaracondong',
                 'KPC Ujungberung',
-                'KPC Cimahi',
             ],
         ],
         'Semarang' => [
@@ -98,8 +98,8 @@ return [
             ],
         ],
         'Surabaya' => [
-            'KCU Surabaya' => [
-                'KPC Gubeng',
+            'KCU Surabaya Gubeng' => [
+                'KPC Dharmawangsa',
                 'KPC Rungkut',
                 'KPC Tanjung Perak',
                 'KPC Wonokromo',
@@ -108,11 +108,11 @@ return [
         ],
         'Makassar' => [
             'KCU Makassar' => [
+                'KPC Makassar',
                 'KPC Panakkukang',
                 'KPC Pettarani',
                 'KPC Tamalanrea',
                 'KPC Daya',
-                'KPC Sungguminasa',
             ],
         ],
     ],

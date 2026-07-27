@@ -70,7 +70,8 @@ class OperatorLintasWilayahTest extends TestCase
 
         $operator = $this->operator(['region' => null]);
 
-        foreach (['Medan', 'Jakarta', 'Bandung', 'Semarang', 'Surabaya'] as $regional) {
+        // Lima regional yang dipakai skenario simulasi pengujian.
+        foreach (['Medan', 'Jakarta', 'Bandung', 'Surabaya', 'Makassar'] as $regional) {
             $kcu = array_key_first(config("wilayah.struktur.{$regional}"));
             $kpc = config("wilayah.struktur.{$regional}.{$kcu}")[0];
 
