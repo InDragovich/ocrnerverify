@@ -51,7 +51,7 @@ class UserSeeder extends Seeder
                 // menginput dokumen untuk seluruh regional/KCU/KPC. Dipakai
                 // untuk menyiapkan data simulasi pengujian.
                 'name' => 'Operator Pusat',
-                'username' => 'input_pusat',
+                'username' => 'operator',
                 'password' => 'password',
                 'role' => 'operator',
                 'region' => null,
