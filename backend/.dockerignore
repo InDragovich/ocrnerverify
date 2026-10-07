@@ -1,0 +1,15 @@
+/vendor
+/node_modules
+/.phpunit.cache
+.env
+.env.backup
+.env.production
+/storage/*.sqlite
+/storage/logs/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+.git
+.gitignore
+.vscode
+.idea
