@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sim-lpu-backend
+    name: ocrnerverify-backend
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
