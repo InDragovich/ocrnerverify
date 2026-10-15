@@ -11,7 +11,7 @@ use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
 // Mock OCR-NER endpoint (accessible internally)
 Route::post('/mock/ocr-ner', [MockOcrNerController::class, 'extract']);
