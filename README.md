@@ -58,7 +58,7 @@ npm run dev
 
 Seeding always creates the two public demo accounts above. It also creates staff accounts (`operator`, `verificator`, `superadmin`, and regional operators) with the password `password` in a local environment; elsewhere, set `SEED_PASSWORD` first or they are skipped.
 
-To try the app without the OCR/NER service, set `OCR_NER_USE_MOCK=true` in `backend/.env`. For real OCR, see [CARA-MENJALANKAN.md](CARA-MENJALANKAN.md) (in Indonesian), which also covers common problems.
+To try the app without the OCR/NER service, set `OCR_NER_USE_MOCK=true` in `backend/.env`. For real OCR and common problems, see [RUNNING.md](RUNNING.md).
 
 ## Security measures
 
@@ -72,7 +72,7 @@ To try the app without the OCR/NER service, set `OCR_NER_USE_MOCK=true` in `back
 
 - The fine-tuned NER model (about 495 MB) is not included in this repository.
 - The live demo uses the simulated reader; real OCR/NER runs only on a local machine.
-- Documentation for deployment ([CARA-DEPLOY.md](CARA-DEPLOY.md)) and the version history ([CHANGELOG.md](CHANGELOG.md)) are written in Indonesian.
+- Deployment is described in [DEPLOYMENT.md](DEPLOYMENT.md), and the version history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
