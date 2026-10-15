@@ -31,3 +31,5 @@ services:
         value: "true"
       - key: FRONTEND_URL
         sync: false
+      - key: SEED_PASSWORD
+        sync: false

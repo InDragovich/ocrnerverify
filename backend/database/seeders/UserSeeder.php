@@ -9,11 +9,22 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
+        // Password akun demo dibaca dari env agar tidak ada password default
+        // yang berlaku di production. Default 'password' hanya untuk lokal.
+        $password = env('SEED_PASSWORD')
+            ?: (app()->environment('local', 'testing') ? 'password' : null);
+
+        if ($password === null) {
+            $this->command?->warn('SEED_PASSWORD belum diisi, akun demo tidak dibuat.');
+
+            return;
+        }
+
         $users = [
             [
                 'name' => 'Budi Santoso',
                 'username' => 'input_jkt',
-                'password' => 'password',
+                'password' => $password,
                 'role' => 'operator',
                 'region' => 'Jakarta',
                 'kcu' => 'KCU Jakarta Utara',
@@ -22,7 +33,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Siti Aminah',
                 'username' => 'input_medan',
-                'password' => 'password',
+                'password' => $password,
                 'role' => 'operator',
                 'region' => 'Medan',
                 'kcu' => 'KCU Medan',
@@ -31,7 +42,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Agus Salim',
                 'username' => 'input_sby',
-                'password' => 'password',
+                'password' => $password,
                 'role' => 'operator',
                 'region' => 'Surabaya',
                 'kcu' => 'KCU Surabaya Gubeng',
@@ -40,7 +51,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Rina Wati',
                 'username' => 'input_mks',
-                'password' => 'password',
+                'password' => $password,
                 'role' => 'operator',
                 'region' => 'Makassar',
                 'kcu' => 'KCU Makassar',
@@ -52,7 +63,7 @@ class UserSeeder extends Seeder
                 // untuk menyiapkan data simulasi pengujian.
                 'name' => 'Operator Pusat',
                 'username' => 'operator',
-                'password' => 'password',
+                'password' => $password,
                 'role' => 'operator',
                 'region' => null,
                 'kcu' => null,
@@ -61,7 +72,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Admin Verifikator',
                 'username' => 'verificator',
-                'password' => 'password',
+                'password' => $password,
                 'role' => 'verifikator',
                 'region' => null,
                 'kcu' => null,
@@ -70,7 +81,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Super Administrator',
                 'username' => 'superadmin',
-                'password' => 'password',
+                'password' => $password,
                 'role' => 'super_admin',
                 'region' => null,
                 'kcu' => null,

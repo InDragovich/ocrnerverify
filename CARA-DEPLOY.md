@@ -149,11 +149,11 @@ Kalau nanti pakai custom domain atau URL preview Vercel, URL itu juga harus dita
 ## Langkah 4 — Tes End-to-End
 
 1. Buka URL Vercel
-2. Login `verificator` / `password`
+2. Login `verificator` dengan password yang kamu isi di `SEED_PASSWORD`
 3. Buka DevTools → tab Network, pastikan request menuju domain Render dan berstatus 200
 4. Coba batch verifikasi — akan jalan dengan hasil mock
 
-Akun demo (semua password `password`): `input_jkt`, `input_medan`, `input_sby`, `input_mks`, `verificator`, `superadmin`.
+Akun demo (semua memakai password dari env `SEED_PASSWORD` di Render; jika kosong, akun tidak dibuat): `input_jkt`, `input_medan`, `input_sby`, `input_mks`, `verificator`, `superadmin`.
 
 ---
 
