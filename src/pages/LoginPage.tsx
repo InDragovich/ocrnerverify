@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { LogIn, Loader2 } from 'lucide-react';
 
+// Akun demo publik (operator dan verifikator saja); lihat UserSeeder.
+const DEMO_PASSWORD = 'demo1234';
+const DEMO_ACCOUNTS = [
+    { username: 'demo_operator', label: 'Isi sebagai Operator' },
+    { username: 'demo_verifikator', label: 'Isi sebagai Verifikator' },
+];
+
 export const LoginPage: React.FC = () => {
     const navigate = useNavigate();
     const [username, setUsername] = useState('');
@@ -94,6 +101,26 @@ export const LoginPage: React.FC = () => {
                         {loading ? 'Memproses...' : 'Masuk'}
                     </button>
                 </form>
+
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                    <p className="text-xs text-gray-500 text-center mb-2">Ingin mencoba? Pakai akun demo (password: {DEMO_PASSWORD})</p>
+                    <div className="grid grid-cols-2 gap-2">
+                        {DEMO_ACCOUNTS.map((akun) => (
+                            <button
+                                key={akun.username}
+                                type="button"
+                                onClick={() => {
+                                    setUsername(akun.username);
+                                    setPassword(DEMO_PASSWORD);
+                                    setError('');
+                                }}
+                                className="text-xs font-medium text-indigo-600 border border-indigo-200 hover:bg-indigo-50 rounded-lg py-2 transition-colors"
+                            >
+                                {akun.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );

@@ -7,15 +7,23 @@ use Illuminate\Database\Seeder;
 
 class UserSeeder extends Seeder
 {
+    /**
+     * Password akun demo publik. Sengaja tidak rahasia karena ditampilkan di
+     * halaman login; akun ini hanya operator dan verifikator tanpa akses admin.
+     */
+    private const DEMO_PASSWORD = 'demo1234';
+
     public function run(): void
     {
-        // Password akun demo dibaca dari env agar tidak ada password default
+        $this->seedDemoAccounts();
+
+        // Password akun lain dibaca dari env agar tidak ada password default
         // yang berlaku di production. Default 'password' hanya untuk lokal.
         $password = env('SEED_PASSWORD')
             ?: (app()->environment('local', 'testing') ? 'password' : null);
 
         if ($password === null) {
-            $this->command?->warn('SEED_PASSWORD belum diisi, akun demo tidak dibuat.');
+            $this->command?->warn('SEED_PASSWORD belum diisi, akun staf tidak dibuat (akun demo tetap dibuat).');
 
             return;
         }
@@ -98,6 +106,21 @@ class UserSeeder extends Seeder
             User::firstOrCreate(
                 ['username' => $userData['username']],
                 $userData,
+            );
+        }
+    }
+
+    private function seedDemoAccounts(): void
+    {
+        $demo = [
+            ['name' => 'Demo Operator', 'username' => 'demo_operator', 'role' => 'operator'],
+            ['name' => 'Demo Verifikator', 'username' => 'demo_verifikator', 'role' => 'verifikator'],
+        ];
+
+        foreach ($demo as $akun) {
+            User::firstOrCreate(
+                ['username' => $akun['username']],
+                $akun + ['password' => self::DEMO_PASSWORD, 'region' => null, 'kcu' => null, 'kcp' => null],
             );
         }
     }

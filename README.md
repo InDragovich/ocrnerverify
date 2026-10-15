@@ -2,7 +2,9 @@
 
 A web application that checks routine operational cost reports (electricity, telephone, water and gas) by reading the attached document and comparing it with what was entered. It was built as an undergraduate thesis project.
 
-**Live demo:** https://ocrnerverify.vercel.app (uses sample data and a simulated reader; demo accounts are available on request)
+**Live demo:** https://ocrnerverify.vercel.app (uses sample data and a simulated reader)
+
+**Try it:** the login page has two demo accounts, `demo_operator` and `demo_verifikator` (password `demo1234`). Log in as the operator to add a report with an attachment, then as the verifier to run the verification.
 
 <!-- Add 2-3 screenshots here: login, verifier dashboard, document detail -->
 
@@ -54,7 +56,7 @@ npm install
 npm run dev
 ```
 
-Seeding creates demo accounts (`operator`, `verificator`, `superadmin`) with the password `password`. This default works only in a local environment; elsewhere, set `SEED_PASSWORD` first.
+Seeding always creates the two public demo accounts above. It also creates staff accounts (`operator`, `verificator`, `superadmin`, and regional operators) with the password `password` in a local environment; elsewhere, set `SEED_PASSWORD` first or they are skipped.
 
 To try the app without the OCR/NER service, set `OCR_NER_USE_MOCK=true` in `backend/.env`. For real OCR, see [CARA-MENJALANKAN.md](CARA-MENJALANKAN.md) (in Indonesian), which also covers common problems.
 
